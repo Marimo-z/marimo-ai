@@ -1,4 +1,4 @@
-import type { GameEventType, GameOutcome } from './game'
+import type { GameEventType, GameOutcome, PlayableGameId } from './game'
 import type { PetEmotion } from './pet'
 import type { GameSettings } from './settings'
 
@@ -40,6 +40,12 @@ const LINES: Record<GameEventType, GameLine[][]> = {
     [{ text: '送上门的机会，我不客气啦。', emotion: 'happy' }],
     [{ text: '就这？我闭着眼都能赢。', emotion: 'angry' }]
   ],
+  player_damaged: [
+    [{ text: '小心，你受伤了。', emotion: 'sad' }],
+    [{ text: '哎呀，挨了一下。', emotion: 'curious' }],
+    [{ text: '躲都不会躲？', emotion: 'angry' }],
+    [{ text: '就这血量？再来一炮。', emotion: 'happy' }]
+  ],
   player_win: [
     [{ text: '你赢啦！好厉害～', emotion: 'happy' }],
     [{ text: '哇，被你打败了。再来一局？', emotion: 'happy' }],
@@ -80,15 +86,23 @@ export function shouldSpeakGameEvent(
   return true
 }
 
+const TANK_START: GameLine[][] = [
+  [{ text: '战场准备好了，我罩着你。', emotion: 'curious' }],
+  [{ text: '敌人来了，别站着挨打。', emotion: 'happy' }],
+  [{ text: '炮弹不长眼，躲好再开枪。', emotion: 'angry' }],
+  [{ text: '嘿嘿，看你能撑几炮。', emotion: 'happy' }]
+]
+
 export function pickGameLine(
   type: GameEventType,
   tauntLevel: number,
   outcome: GameOutcome | undefined,
-  rng: () => number
+  rng: () => number,
+  gameId?: PlayableGameId
 ): GameLine | null {
   const level = Math.min(3, Math.max(0, Math.round(tauntLevel)))
   if (type === 'game_over' && outcome && outcome !== 'draw') return null
-  const pool = LINES[type]?.[level]
+  const pool = (type === 'game_started' && gameId === 'tank' ? TANK_START : LINES[type])?.[level]
   if (!pool || pool.length === 0) return null
   return pool[Math.min(pool.length - 1, Math.floor(rng() * pool.length))]
 }

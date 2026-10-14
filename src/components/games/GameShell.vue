@@ -5,16 +5,21 @@ import type { GameOutcome, GameSide } from '../../../shared/game'
 import PageHeader from '../common/PageHeader.vue'
 import SettingsCard from '../common/SettingsCard.vue'
 
-defineProps<{
-  title: string
-  description: string
-  difficulty: GameDifficulty
-  first: GameSide
-  paused: boolean
-  over: boolean
-  thinking: boolean
-  outcome: GameOutcome | null
-}>()
+withDefaults(
+  defineProps<{
+    title: string
+    description: string
+    difficulty: GameDifficulty
+    first?: GameSide
+    showFirst?: boolean
+    boardTitle?: string
+    paused: boolean
+    over: boolean
+    thinking: boolean
+    outcome: GameOutcome | null
+  }>(),
+  { first: 'player', showFirst: true, boardTitle: '棋盘' }
+)
 
 const emit = defineEmits<{
   back: []
@@ -45,7 +50,7 @@ const OUTCOME_TEXT: Record<GameOutcome, string> = {
     </PageHeader>
 
     <div class="layout">
-      <SettingsCard title="棋盘">
+      <SettingsCard :title="boardTitle">
         <div class="board-wrap">
           <slot />
           <div v-if="paused" class="overlay">已暂停</div>
@@ -70,7 +75,7 @@ const OUTCOME_TEXT: Record<GameOutcome, string> = {
               </el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="先手">
+          <el-form-item v-if="showFirst" label="先手">
             <el-radio-group
               :model-value="first"
               @change="(v) => emit('update:first', v as GameSide)"

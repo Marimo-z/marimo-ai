@@ -14,6 +14,7 @@ import ChatView from '../../views/ChatView.vue'
 import GameCenterView from '../../views/GameCenterView.vue'
 import GomokuView from '../../views/GomokuView.vue'
 import OverviewView from '../../views/OverviewView.vue'
+import TankView from '../../views/TankView.vue'
 import TicTacToeView from '../../views/TicTacToeView.vue'
 import PersonaView from '../../views/PersonaView.vue'
 import PetSettingsView from '../../views/PetSettingsView.vue'
@@ -56,6 +57,7 @@ export const router = createRouter({
     })),
     { path: '/games/tic-tac-toe', component: TicTacToeView, meta: { title: '井字棋' } },
     { path: '/games/gomoku', component: GomokuView, meta: { title: '五子棋' } },
+    { path: '/games/tank', component: TankView, meta: { title: '坦克大战' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' }
   ]
 })

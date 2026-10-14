@@ -7,6 +7,7 @@ import type { ConfigStore } from '../services/config-store'
 import { PointerTracker } from '../services/pointer-tracker'
 import type { SettingsService } from '../services/settings-service'
 import { defaultPosition, ensureVisible, type Point, type Rect } from '../services/window-bounds'
+import { guardNavigation } from './guard-navigation'
 
 const CURSOR_POLL_MS = 33
 const DRAG_POLL_MS = 16
@@ -107,7 +108,7 @@ export class PetWindow {
     })
 
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    win.webContents.on('will-navigate', (event) => event.preventDefault())
+    guardNavigation(win.webContents)
 
     const devUrl = process.env['ELECTRON_RENDERER_URL']
     if (!app.isPackaged && devUrl) {

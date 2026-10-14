@@ -5,6 +5,7 @@ import type { GameRecord } from '../../../shared/game'
 import { IPC } from '../../../shared/ipc'
 import type { AppSettings } from '../../../shared/settings'
 import { PANEL_CHROME, PANEL_TITLE_BAR_HEIGHT } from '../../../shared/theme'
+import { guardNavigation } from './guard-navigation'
 import type { LocalModelStatus, VoiceState } from '../../../shared/voice'
 
 export const PANEL_ROUTES = [
@@ -102,7 +103,7 @@ export class SettingsWindow {
       this.win = null
     })
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
-    win.webContents.on('will-navigate', (event) => event.preventDefault())
+    guardNavigation(win.webContents)
 
     const devUrl = process.env['ELECTRON_RENDERER_URL']
     if (!app.isPackaged && devUrl) {

@@ -163,11 +163,12 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 
 ### 小游戏（阶段 5）
 
-- **接口**：`GameAdapter`（`initialize / start / pause / resume / restart / destroy / setDifficulty / onEvent`）。棋盘在控制面板用 Vue 渲染，适配器只负责规则、AI 和事件，不碰 Phaser（留给阶段 6 坦克大战）。
+- **接口**：`GameAdapter`（`initialize / start / pause / resume / restart / destroy / setDifficulty / onEvent`）。适配器只负责规则、AI 和事件，画面在控制面板里用 Vue 绘制。
 - **井字棋**：简单随机合法落子；普通先取胜再阻挡，再走中心/角；困难 Minimax，对随机对手不败。
 - **五子棋**：15×15 五连，无禁手。简单在高分候选中随机；普通攻守评分；困难在邻域候选上做 2 步搜索。算法可单测。
 - **事件**：视图把 `game_started` 等事件发给主进程 `GameService`（zod 校验）。开局把桌宠设为 `playing`；结束写入 `%APPDATA%\marimo\game-records.json`。中途离开不记战绩。
 - **对话**：本地台词模板，按嘲讽强度分 4 档；开始/胜负/平局必说，其余按对话频率节流。不请求大模型，不阻塞落子。开启自动朗读时才异步走 TTS。对局中主动搭话被当作 busy。
+- **坦克大战**：`src/games/tank.ts` 做移动、碰撞、炮弹、随机地图、道具和敌方 AI，Vue 里用 Canvas 按状态绘制。不使用 Phaser，避免为引擎放宽 `script-src`。车身贴墙或互相重叠时，会沿空出的一侧滑进车道，并把已经叠在一起的坦克推开，避免卡死。难度只改变敌人数、血量、移速和开火间隔。胜负写入同一份战绩。
 
 ## 关键实现
 

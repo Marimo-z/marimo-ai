@@ -81,7 +81,13 @@ export class GameService {
     if (!shouldSpeakGameEvent(event.type, games.dialogueFrequency, this.lastAt, Date.now())) {
       return { ok: true, data: null }
     }
-    const line = pickGameLine(event.type, games.tauntLevel, event.outcome, Math.random)
+    const line = pickGameLine(
+      event.type,
+      games.tauntLevel,
+      event.outcome,
+      Math.random,
+      event.gameId
+    )
     if (!line) return { ok: true, data: null }
     const speak = this.deps.getSettings().voice.autoSpeak
     this.deps.present(line.text, line.emotion, speak)

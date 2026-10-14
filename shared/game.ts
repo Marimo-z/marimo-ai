@@ -1,6 +1,6 @@
 import type { GameDifficulty } from './settings'
 
-export const PLAYABLE_GAME_IDS = ['tic-tac-toe', 'gomoku'] as const
+export const PLAYABLE_GAME_IDS = ['tic-tac-toe', 'gomoku', 'tank'] as const
 export type PlayableGameId = (typeof PLAYABLE_GAME_IDS)[number]
 
 export const GAME_EVENT_TYPES = [
@@ -8,6 +8,7 @@ export const GAME_EVENT_TYPES = [
   'turn_started',
   'player_good_move',
   'player_mistake',
+  'player_damaged',
   'player_win',
   'player_lose',
   'game_paused',
@@ -44,7 +45,8 @@ export interface GameRecord {
 
 export const GAME_NAMES: Record<PlayableGameId, string> = {
   'tic-tac-toe': '井字棋',
-  gomoku: '五子棋'
+  gomoku: '五子棋',
+  tank: '坦克大战'
 }
 
 export const GAME_OUTCOME_LABELS: Record<GameOutcome, string> = {

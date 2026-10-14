@@ -34,8 +34,8 @@ const GAMES = [
     id: 'tank',
     name: '坦克大战',
     glyph: '▲',
-    description: '2D 俯视角射击，敌方 AI、地图障碍与碰撞。',
-    route: null
+    description: '更大的随机地图、砖墙钢墙和五种道具。',
+    route: '/games/tank'
   }
 ]
 
