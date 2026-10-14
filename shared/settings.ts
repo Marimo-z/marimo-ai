@@ -11,7 +11,12 @@ export interface AIProviderPreset {
 
 /** OpenAI-compatible endpoints. Model defaults are only suggestions and can be edited. */
 export const AI_PROVIDER_PRESETS = [
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash' },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-flash'
+  },
   {
     id: 'qwen',
     name: '通义千问（阿里云百炼）',
@@ -26,8 +31,12 @@ export const AI_PROVIDER_PRESETS = [
     model: '',
     keyOptional: true
   },
-  { id: 'custom', name: '自定义（OpenAI 兼容）', baseUrl: '', model: '' }
+  { id: 'custom', name: '自定义（OpenAI 兼容）', baseUrl: '', model: '' },
+  { id: 'mock', name: '模拟（离线测试）', baseUrl: '', model: 'mock', keyOptional: true }
 ] as const satisfies readonly AIProviderPreset[]
+
+/** Offline provider with canned replies; needs no URL, model or key. */
+export const MOCK_PROVIDER_ID = 'mock'
 
 export type AIProviderId = (typeof AI_PROVIDER_PRESETS)[number]['id']
 export const AI_PROVIDER_IDS = AI_PROVIDER_PRESETS.map((p) => p.id) as [

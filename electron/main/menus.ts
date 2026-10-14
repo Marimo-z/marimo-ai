@@ -8,10 +8,6 @@ export interface MenuActions {
   openPanel(route?: PanelRoute): void
 }
 
-function comingSoon(label: string): MenuItemConstructorOptions {
-  return { label: `${label}（即将推出）`, enabled: false }
-}
-
 function settingToggles(pet: PetWindow): MenuItemConstructorOptions[] {
   const s = pet.settings
   return [
@@ -52,6 +48,7 @@ export function buildTrayMenu(pet: PetWindow, actions: MenuActions): Menu {
   return Menu.buildFromTemplate([
     { label: pet.visible ? '隐藏桌宠' : '显示桌宠', click: () => pet.toggle() },
     { label: '打开控制面板', click: () => actions.openPanel('/overview') },
+    { label: '聊天', click: () => actions.openPanel('/chat') },
     { label: '设置', click: () => actions.openPanel('/pet') },
     { type: 'separator' },
     ...settingToggles(pet),
@@ -62,7 +59,7 @@ export function buildTrayMenu(pet: PetWindow, actions: MenuActions): Menu {
 
 export function buildPetContextMenu(pet: PetWindow, actions: MenuActions): Menu {
   return Menu.buildFromTemplate([
-    comingSoon('聊天'),
+    { label: '聊天', click: () => actions.openPanel('/chat') },
     { label: '小游戏', click: () => actions.openPanel('/games') },
     { label: '设置', click: () => actions.openPanel('/pet') },
     { type: 'separator' },

@@ -1,10 +1,19 @@
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'node:path'
+import type { ChatState } from '../../../shared/chat'
 import { IPC } from '../../../shared/ipc'
 import type { AppSettings } from '../../../shared/settings'
 import { PANEL_CHROME, PANEL_TITLE_BAR_HEIGHT } from '../../../shared/theme'
 
-export const PANEL_ROUTES = ['/overview', '/ai', '/persona', '/voice', '/pet', '/games'] as const
+export const PANEL_ROUTES = [
+  '/overview',
+  '/chat',
+  '/ai',
+  '/persona',
+  '/voice',
+  '/pet',
+  '/games'
+] as const
 export type PanelRoute = (typeof PANEL_ROUTES)[number]
 
 function chrome(): (typeof PANEL_CHROME)['light' | 'dark'] {
@@ -37,6 +46,10 @@ export class SettingsWindow {
 
   broadcast(settings: AppSettings): void {
     this.win?.webContents.send(IPC.settingsChanged, settings)
+  }
+
+  broadcastChat(state: ChatState): void {
+    this.win?.webContents.send(IPC.chatChanged, state)
   }
 
   private create(route: PanelRoute): void {

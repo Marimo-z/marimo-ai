@@ -54,7 +54,11 @@ const gestures = usePetGestures(petBridge, {
 
 function handleCommand(command: PetCommand): void {
   if (command?.type === 'emotion' && isPetEmotion(command.emotion)) {
-    store.setEmotion(command.emotion, 4000)
+    const duration = command.durationMs
+    store.setEmotion(
+      command.emotion,
+      typeof duration === 'number' && duration >= 0 ? Math.min(duration, 60_000) : 4000
+    )
   } else if (command?.type === 'say') {
     if (typeof command.text === 'string' && command.text.trim()) {
       store.say(command.text, isPetEmotion(command.emotion) ? command.emotion : undefined)

@@ -1,4 +1,10 @@
-import type { AIKeyStatus, ConnectionTestResult, SettingsBridge } from '../../../shared/ipc'
+import type { ChatMessage, ChatState } from '../../../shared/chat'
+import type {
+  AIKeyStatus,
+  ChatBridge,
+  ConnectionTestResult,
+  SettingsBridge
+} from '../../../shared/ipc'
 import { DEFAULT_SETTINGS, type AppSettings } from '../../../shared/settings'
 
 /**
@@ -60,10 +66,51 @@ function createBrowserPreviewBridge(): SettingsBridge {
   }
 }
 
+function createBrowserPreviewChatBridge(): ChatBridge {
+  let state: ChatState = { messages: [], busy: false }
+  const listeners = new Set<(s: ChatState) => void>()
+  const set = (next: ChatState): void => {
+    state = next
+    listeners.forEach((l) => l(structuredClone(state)))
+  }
+  let seq = 0
+  const message = (role: ChatMessage['role'], text: string): ChatMessage => ({
+    id: `preview-${++seq}`,
+    role,
+    text,
+    at: Date.now(),
+    ...(role === 'assistant' ? { emotion: 'happy' as const } : {})
+  })
+
+  return {
+    getState: async () => structuredClone(state),
+    async send(text) {
+      set({ messages: [...state.messages, message('user', text)], busy: true })
+      await new Promise((r) => setTimeout(r, 600))
+      const reply = message('assistant', `（浏览器预览）收到：${text}`)
+      set({ messages: [...state.messages, reply], busy: false })
+      return { ok: true, reply }
+    },
+    cancel: async () => {},
+    clear: async () => set({ messages: [], busy: false }),
+    onChanged(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    }
+  }
+}
+
 function resolveBridge(): SettingsBridge {
   if (window.marimo?.settings) return window.marimo.settings
   if (import.meta.env.DEV) return createBrowserPreviewBridge()
   throw new Error('Marimo preload bridge is unavailable')
 }
 
+function resolveChatBridge(): ChatBridge {
+  if (window.marimo?.chat) return window.marimo.chat
+  if (import.meta.env.DEV) return createBrowserPreviewChatBridge()
+  throw new Error('Marimo preload bridge is unavailable')
+}
+
 export const settingsBridge = resolveBridge()
+export const chatBridge = resolveChatBridge()

@@ -8,7 +8,8 @@ import {
 } from '../../../shared/ipc'
 import { isPetEmotion } from '../../../shared/pet'
 import { isSettingsSection } from '../../../shared/settings'
-import { testConnection } from '../services/ai/connection-test'
+import { createProvider } from '../services/ai/provider'
+import type { ChatService } from '../services/chat-service'
 import { aiProfileSchema, formatIssues } from '../services/config-schema'
 import { aiKeyName, type SecureStorage } from '../services/secure-storage'
 import { SettingsValidationError, type SettingsService } from '../services/settings-service'
@@ -23,9 +24,10 @@ interface Deps {
   secrets: SecureStorage
   pet: PetWindow
   panel: SettingsWindow
+  chat: ChatService
 }
 
-export function registerSettingsIpc({ settings, secrets, pet, panel }: Deps): void {
+export function registerSettingsIpc({ settings, secrets, pet, panel, chat }: Deps): void {
   /** Registers a handler that only the control panel may call. */
   const handle = <A extends unknown[], R>(
     channel: string,
@@ -93,8 +95,13 @@ export function registerSettingsIpc({ settings, secrets, pet, panel }: Deps): vo
       return { ok: false, kind: 'invalid-url', message: formatIssues(parsed.error) }
     }
     const key = profileExists(parsed.data.id) ? secrets.get(aiKeyName(parsed.data.id)) : null
-    return testConnection(parsed.data, key)
+    return createProvider(parsed.data, key).testConnection()
   })
+
+  handle(IPC.chatGetState, () => chat.state())
+  handle(IPC.chatSend, (text: unknown) => chat.send(text))
+  handle(IPC.chatCancel, () => chat.cancel())
+  handle(IPC.chatClear, () => chat.clear())
 
   handle(IPC.petResetPosition, () => pet.resetPosition())
 

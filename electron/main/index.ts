@@ -3,7 +3,11 @@ import { join } from 'node:path'
 import { registerPetIpc } from './ipc/pet-ipc'
 import { registerSettingsIpc } from './ipc/settings-ipc'
 import type { MenuActions } from './menus'
+import { createProvider } from './services/ai/provider'
+import { ChatHistoryStore } from './services/chat-history'
+import { ChatService } from './services/chat-service'
 import { ConfigStore } from './services/config-store'
+import { PROACTIVE_CHECK_INTERVAL_MS, shouldSpeakProactively } from './services/proactive'
 import { aiKeyName, SecureStorage } from './services/secure-storage'
 import { SettingsService } from './services/settings-service'
 import { createTray } from './tray'
@@ -11,6 +15,7 @@ import { PetWindow } from './windows/pet-window'
 import { SettingsWindow } from './windows/settings-window'
 
 let tray: Tray | null = null
+let proactiveTimer: ReturnType<typeof setInterval> | null = null
 
 function applyLaunchAtLogin(enabled: boolean): void {
   // In development the executable is the bare Electron binary, so registering it is pointless.
@@ -34,6 +39,29 @@ if (!app.requestSingleInstanceLock()) {
 
     const pet = new PetWindow(store, settings)
     const panel = new SettingsWindow()
+    const chat = new ChatService({
+      getSettings: () => settings.get(),
+      getKey: (profileId) => secrets.get(aiKeyName(profileId)),
+      createProvider: (profile, key) => createProvider(profile, key),
+      history: new ChatHistoryStore(join(userData, 'chat-history.json')),
+      onState: (state) => panel.broadcastChat(state),
+      onPet: (command) => pet.sendCommand(command)
+    })
+    proactiveTimer = setInterval(() => {
+      const context = {
+        now: Date.now(),
+        lastActivity: chat.lastActivity,
+        settings: settings.get(),
+        petVisible: pet.visible,
+        busy: chat.busy
+      }
+      if (shouldSpeakProactively(context)) {
+        void chat.speakProactively().then((result) => {
+          if (!result.ok) console.warn(`[chat] proactive line skipped: ${result.kind}`)
+        })
+      }
+    }, PROACTIVE_CHECK_INTERVAL_MS)
+
     const actions: MenuActions = {
       quit: () => app.quit(),
       openPanel: (route) => panel.open(route)
@@ -43,6 +71,9 @@ if (!app.requestSingleInstanceLock()) {
       const remaining = new Set(next.ai.profiles.map((p) => p.id))
       for (const { id } of previous.ai.profiles) {
         if (!remaining.has(id)) secrets.delete(aiKeyName(id))
+      }
+      if (next.persona.keepHistory !== previous.persona.keepHistory) {
+        chat.setKeepHistory(next.persona.keepHistory)
       }
       if (next.appearance.theme !== previous.appearance.theme) {
         nativeTheme.themeSource = next.appearance.theme
@@ -54,7 +85,7 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     registerPetIpc(pet, actions)
-    registerSettingsIpc({ settings, secrets, pet, panel })
+    registerSettingsIpc({ settings, secrets, pet, panel, chat })
     pet.create()
     tray = createTray(pet, actions)
 
@@ -63,6 +94,8 @@ if (!app.requestSingleInstanceLock()) {
       panel.open()
     })
     app.on('before-quit', () => {
+      if (proactiveTimer) clearInterval(proactiveTimer)
+      chat.cancel()
       pet.prepareQuit()
       store.flush()
       tray?.destroy()

@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import type { AppInfo } from '../../shared/ipc'
 import { findProviderPreset } from '../../shared/settings'
 import { settingsBridge } from '../app/settings/bridge'
+import { useChatStore } from '../app/stores/chat'
 import { useSettingsStore } from '../app/stores/settings'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
@@ -60,7 +61,11 @@ async function resetAll(): Promise<void> {
   ElMessage.success('已恢复默认配置')
 }
 
+const chat = useChatStore()
+const recent = computed(() => chat.messages.slice(-4))
+
 onMounted(async () => {
+  void chat.load()
   info.value = await settingsBridge.getAppInfo()
 })
 </script>
@@ -79,9 +84,7 @@ onMounted(async () => {
           </el-tag>
         </p>
         <div class="hero-actions">
-          <el-tooltip content="AI 对话将在阶段 3 接入" placement="top">
-            <span><el-button type="primary" disabled>开始聊天（即将推出）</el-button></span>
-          </el-tooltip>
+          <el-button type="primary" @click="router.push('/chat')">开始聊天</el-button>
           <el-button @click="sayHello">让桌宠打个招呼</el-button>
           <el-button @click="testVoice">测试语音</el-button>
           <el-button @click="router.push('/games')">游戏中心</el-button>
@@ -143,7 +146,16 @@ onMounted(async () => {
 
     <div class="grid-2">
       <SettingsCard title="最近互动">
-        <el-empty description="聊天功能接入后会显示在这里" :image-size="64" />
+        <template #extra>
+          <el-button link type="primary" @click="router.push('/chat')">全部</el-button>
+        </template>
+        <ul v-if="recent.length" class="recent">
+          <li v-for="m in recent" :key="m.id">
+            <span class="recent-who">{{ m.role === 'user' ? '我' : s.persona.name }}</span>
+            <span class="recent-text" :title="m.text">{{ m.text }}</span>
+          </li>
+        </ul>
+        <el-empty v-else description="还没有聊天记录" :image-size="64" />
       </SettingsCard>
       <SettingsCard title="最近战绩">
         <el-empty description="小游戏上线后会显示在这里" :image-size="64" />
@@ -222,6 +234,32 @@ onMounted(async () => {
 
 .card-link {
   margin-top: 14px;
+}
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.recent li {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.recent-who {
+  flex: none;
+  color: var(--mo-text-secondary);
+}
+
+.recent-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .maintenance {

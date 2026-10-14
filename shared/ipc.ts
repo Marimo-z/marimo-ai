@@ -1,3 +1,4 @@
+import type { ChatSendResult, ChatState } from './chat'
 import type { PetEmotion, PetSettings } from './pet'
 import type { AIProfile, AppSettings, SettingsSection } from './settings'
 
@@ -21,6 +22,11 @@ export const IPC = {
   secretsAISet: 'secrets:ai-set',
   secretsAIDelete: 'secrets:ai-delete',
   aiTestConnection: 'ai:test-connection',
+  chatGetState: 'chat:get-state',
+  chatSend: 'chat:send',
+  chatCancel: 'chat:cancel',
+  chatClear: 'chat:clear',
+  chatChanged: 'chat:changed',
   petResetPosition: 'pet:reset-position',
   petPreviewSay: 'pet:preview-say',
   appGetInfo: 'app:get-info'
@@ -33,7 +39,9 @@ export interface CursorPoint {
 }
 
 export type PetCommand =
-  { type: 'say'; text?: string; emotion?: PetEmotion } | { type: 'emotion'; emotion: PetEmotion }
+  | { type: 'say'; text?: string; emotion?: PetEmotion }
+  /** `durationMs` 0 keeps the emotion until the next command. */
+  | { type: 'emotion'; emotion: PetEmotion; durationMs?: number }
 
 /** What the pet window needs: its own settings plus the persona name for the greeting. */
 export interface PetViewSettings extends PetSettings {
@@ -113,7 +121,17 @@ export interface SettingsBridge {
   getAppInfo(): Promise<AppInfo>
 }
 
+export interface ChatBridge {
+  getState(): Promise<ChatState>
+  /** Resolves when the reply arrives, fails, or is cancelled. Only one request runs at a time. */
+  send(text: string): Promise<ChatSendResult>
+  cancel(): Promise<void>
+  clear(): Promise<void>
+  onChanged(listener: (state: ChatState) => void): Unsubscribe
+}
+
 export interface MarimoBridge {
   pet: PetBridge
   settings: SettingsBridge
+  chat: ChatBridge
 }

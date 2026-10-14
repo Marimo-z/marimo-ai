@@ -1,5 +1,6 @@
 import type { ConnectionErrorKind, ConnectionTestResult } from '../../../../shared/ipc'
 import type { AIProfile } from '../../../../shared/settings'
+import { errorForFetchFailure, errorForStatus } from './errors'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -30,16 +31,13 @@ export function isLocalUrl(raw: string): boolean {
   }
 }
 
-function fail(kind: ConnectionErrorKind, message: string, status?: number): ConnectionTestResult {
-  return { ok: false, kind, message, status }
+/** `{baseUrl}/{path}` without doubled slashes. */
+export function endpoint(url: URL, path: string): string {
+  return `${url.href.replace(/\/+$/, '')}/${path}`
 }
 
-function classifyStatus(status: number): ConnectionTestResult {
-  if (status === 401 || status === 403) return fail('auth', 'API Key 无效或没有权限', status)
-  if (status === 404) return fail('not-found', '接口地址不存在，请检查 Base URL', status)
-  if (status === 429) return fail('rate-limit', '请求过于频繁或额度不足，请稍后再试', status)
-  if (status >= 500) return fail('server', '服务端暂时不可用，请稍后再试', status)
-  return fail('unknown', `服务返回了异常状态码 ${status}`, status)
+function fail(kind: ConnectionErrorKind, message: string, status?: number): ConnectionTestResult {
+  return { ok: false, kind, message, status }
 }
 
 function listModelIds(body: unknown): string[] | null {
@@ -66,25 +64,27 @@ export async function testConnection(
     return fail('missing-key', '尚未保存 API Key')
   }
 
-  const endpoint = `${check.url.href.replace(/\/+$/, '')}/models`
   const started = Date.now()
   let response: Response
   try {
-    response = await fetchImpl(endpoint, {
+    response = await fetchImpl(endpoint(check.url, 'models'), {
       method: 'GET',
       headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : {},
       signal: AbortSignal.timeout(settings.timeoutMs)
     })
   } catch (error) {
-    const name = (error as Error)?.name
-    if (name === 'TimeoutError' || name === 'AbortError') {
-      return fail('timeout', `连接超时（${Math.round(settings.timeoutMs / 1000)} 秒）`)
-    }
-    return fail('network', '无法连接到服务，请检查网络或 Base URL')
+    const failure = errorForFetchFailure(error, settings.timeoutMs, false)
+    return fail(failure.kind as ConnectionErrorKind, failure.message)
   }
 
   const latencyMs = Date.now() - started
-  if (!response.ok) return { ...classifyStatus(response.status), latencyMs }
+  if (!response.ok) {
+    const failure = errorForStatus(response.status)
+    return {
+      ...fail(failure.kind as ConnectionErrorKind, failure.message, response.status),
+      latencyMs
+    }
+  }
 
   let ids: string[] | null = null
   try {

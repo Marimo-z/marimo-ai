@@ -1,7 +1,16 @@
 import type { Component } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { MagicStick, Microphone, Odometer, Setting, Trophy, User } from '@element-plus/icons-vue'
+import {
+  ChatDotRound,
+  MagicStick,
+  Microphone,
+  Odometer,
+  Setting,
+  Trophy,
+  User
+} from '@element-plus/icons-vue'
 import AISettingsView from '../../views/AISettingsView.vue'
+import ChatView from '../../views/ChatView.vue'
 import GameCenterView from '../../views/GameCenterView.vue'
 import OverviewView from '../../views/OverviewView.vue'
 import PersonaView from '../../views/PersonaView.vue'
@@ -16,6 +25,7 @@ export interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { path: '/overview', title: '总览', icon: Odometer },
+  { path: '/chat', title: '聊天', icon: ChatDotRound },
   { path: '/ai', title: 'AI 配置', icon: MagicStick },
   { path: '/persona', title: '人设与记忆', icon: User },
   { path: '/voice', title: '语音设置', icon: Microphone },
@@ -25,6 +35,7 @@ export const NAV_ITEMS: NavItem[] = [
 
 const views: Record<string, Component> = {
   '/overview': OverviewView,
+  '/chat': ChatView,
   '/ai': AISettingsView,
   '/persona': PersonaView,
   '/voice': VoiceSettingsView,

@@ -34,6 +34,13 @@ const bridge: MarimoBridge = {
     resetPetPosition: () => ipcRenderer.invoke(IPC.petResetPosition),
     previewSay: (text, emotion) => ipcRenderer.invoke(IPC.petPreviewSay, text, emotion),
     getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo)
+  },
+  chat: {
+    getState: () => ipcRenderer.invoke(IPC.chatGetState),
+    send: (text) => ipcRenderer.invoke(IPC.chatSend, text),
+    cancel: () => ipcRenderer.invoke(IPC.chatCancel),
+    clear: () => ipcRenderer.invoke(IPC.chatClear),
+    onChanged: (listener) => subscribe(IPC.chatChanged, listener)
   }
 }
 

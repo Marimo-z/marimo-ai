@@ -34,21 +34,30 @@ electron/
       config-store.ts        JSON 配置读写（原子写入、防抖保存）
       settings-service.ts    设置的唯一入口：按分区读取/更新/恢复默认，并广播变化
       secure-storage.ts      safeStorage（DPAPI）加密的密钥存储
-      ai/connection-test.ts  OpenAI 兼容接口的连接测试
+      ai/provider.ts         AIProvider 接口与 createProvider（按服务商选择实现）
+      ai/openai-compatible.ts OpenAI 兼容的 /chat/completions 实现
+      ai/mock-provider.ts    离线模拟实现
+      ai/connection-test.ts  连接测试（GET /models）与 URL 检查
+      ai/errors.ts           按状态码 / 异常归类错误
+      ai/prompt.ts           系统提示词与上下文裁剪
+      ai/reply-parser.ts     结构化回复的解析与校验
+      chat-service.ts        对话流程：单请求、取消、桌宠联动、历史
+      chat-history.ts        对话历史文件（仅在开启保存时写入）
+      proactive.ts           主动搭话的触发判断（纯函数）
       pointer-tracker.ts     全局光标轮询（位置不变则不发 IPC）
       window-bounds.ts       多显示器可见性修正（纯函数）
       logo-bitmap.ts         logo 光栅化（纯函数）
-  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / window.marimo.settings
+  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / settings / chat
 shared/                      主进程与渲染进程共用的类型、默认值与 IPC 契约（pet / settings / theme / ipc）
 src/
   app/pet/                   桌宠窗口入口（PetApp.vue、bridge.ts）
   app/settings/              控制面板入口（SettingsApp.vue、bridge.ts）
   app/router/                面板路由与导航项
-  app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）
+  app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts（对话状态的镜像）
   components/pet/            PetOrb / PetEyes / PetBubble
   components/common/         SettingsCard / PageHeader / PetPreview
   composables/               光标追踪、手势、眨眼、交互区域、待机浮动、表单草稿、主题
-  views/                     控制面板的 6 个页面
+  views/                     控制面板的 7 个页面
   services/mock-dialogue.ts  本地模拟台词
   styles/panel.css           面板主题变量（浅色 / 深色）
   utils/                     纯函数：眼睛偏移、外观解析、手势判定、气泡时长、浮动曲线、纯数据克隆
@@ -61,12 +70,12 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 - 新增 `shared/`：主进程和渲染进程都需要的类型（`PetSettings`、IPC 通道）放在这里，避免主进程反向依赖 `src/`。
 - 不创建 `PetContextMenu.vue`：右键菜单使用 Electron 原生 `Menu.popup`。HTML 菜单会被 280×340 的透明窗口裁切，而原生菜单不会。
 - 两个渲染入口：`pet.html`（桌宠）和 `settings.html`（控制面板），桌宠窗口因此不必加载 Element Plus 和路由。规格书中的 `SettingsView.vue` 拆分为"桌宠设置"和"外观"（侧栏切换）。
-- AI Provider 将放在主进程（`electron/main/services/ai/`），渲染进程只保留调用门面。规格书把 `services/ai` 放在 `src/` 下，这与"敏感请求经主进程发起"的要求矛盾。
+- AI Provider 放在主进程（`electron/main/services/ai/`），渲染进程只通过 `window.marimo.chat` 发送文本、接收对话状态。规格书把 `services/ai` 放在 `src/` 下，这与"敏感请求经主进程发起"的要求矛盾。
 
 ## 进程与安全
 
 - 所有窗口：`contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
-- 两个窗口共用一个 preload，只暴露 `window.marimo.pet` 和 `window.marimo.settings` 上的固定方法，不暴露 `ipcRenderer`，也不把 IPC event 对象转发给页面。
+- 两个窗口共用一个 preload，只暴露 `window.marimo.pet`、`window.marimo.settings` 和 `window.marimo.chat` 上的固定方法，不暴露 `ipcRenderer`，也不把 IPC event 对象转发给页面。
 - 主进程的每个 IPC 处理器都会校验 `event.sender`：桌宠通道只接受桌宠窗口，面板通道只接受面板窗口。因此即使桌宠页面被注入脚本，也无法修改 AI 配置或写入密钥。
 - 设置更新使用严格的 zod schema（未知字段、越界值直接拒绝并返回错误信息）；读取配置文件时则按字段容错，坏字段回退到默认值，不影响其他字段。
 - 禁止新窗口（`setWindowOpenHandler` → deny）和页面导航（`will-navigate` → preventDefault）。
@@ -93,6 +102,19 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 - 测试对象是一个 AI 配置的表单内容（先经严格 schema 校验），所以无需保存就能测试；使用的是该配置 ID 名下已保存的密钥。
 - 按状态码与异常归类为：地址格式错误、非 HTTPS、未保存密钥、密钥无效或无权限（401/403）、地址不存在（404）、限流（429）、服务端错误（5xx）、超时、网络错误。成功时返回延迟，以及所填模型是否在模型列表中（响应不是标准格式时显示为"未知"）。
 - 返回给页面的消息只包含类别和状态码，不包含密钥和服务器原始响应。
+
+### AI 对话
+
+数据流：聊天页 → `chat:send`（只接受面板窗口，文本 1–1000 字）→ `ChatService` → Provider → 解析回复 → 通过 `chat:changed` 推送新状态给面板，并通过桌宠命令显示气泡和表情。
+
+- **Provider**：`AIProvider { testConnection(); chat(messages, { signal }) }`，返回模型的原始文本。`createProvider` 对 `mock` 返回离线实现，其余服务商都走 OpenAI 兼容的 `POST {baseUrl}/chat/completions`（`stream: false`）。URL 规则与连接测试相同（非本机地址必须 HTTPS）；本机地址（如 Ollama）可以不填密钥。
+- **超时与取消**：请求使用 `AbortSignal.any([用户取消, AbortSignal.timeout(timeoutMs)])`，并区分"已取消"和"超时"。同一时间只允许一个请求，重复发送返回 `busy`。
+- **提示词**：系统提示词包含人设字段和回复长度要求，并要求只输出 `{"text","emotion","speech"}` 格式的 JSON，`emotion` 只能取 6 个情绪之一；同时告知模型它只能聊天，不能执行命令或操作文件。历史中的助手消息以同样的 JSON 形式回放，帮助模型保持格式。
+- **上下文**：从最近的消息往前取，最多 20 条、约 6000 字；如果第一条是助手消息就丢弃，保证以用户消息开头。
+- **回复解析**（`parseAIReply`）：先去掉 `<think>` 推理块和 Markdown 代码块，再尝试解析整段或其中的 `{...}`，用 zod 校验。`emotion` 不在允许列表中时变为 `idle`，`speech` 缺失时为 false，文本截断到 1000 字。不是 JSON 时把整段当作文本（表情为 `idle`）；没有可显示的文本时报"回复格式错误"。模型输出只会被当作文本和一个枚举值使用，不会触发任何其他操作。
+- **桌宠联动**：发送后桌宠显示"思考"（`durationMs: 0`，即一直保持），收到回复后 `say` 文本并切换情绪；出错时用难过表情说明原因（取消时恢复平静）。
+- **历史**：用户消息在请求前写入，回复成功后追加助手消息，最多保留 200 条。开启"保存对话历史"时写入 `userData/chat-history.json`（原子写入；读取时逐条校验，坏条目跳过）；关闭该选项时删除文件，内存中的记录保留到应用退出。
+- **主动搭话**：主进程每 60 秒调用一次 `shouldSpeakProactively`。只有在功能开启、桌宠可见、未开免打扰和鼠标穿透、没有进行中的请求、且距离上次互动超过设定间隔时，才会附加一条"主动说句话"的指令请求模型。失败时不打扰用户。
 
 ## 关键实现
 
@@ -181,7 +203,7 @@ interface AIProfile {
 - 读取容错：缺少可用 ID 的条目和重复 ID 被丢弃；其余字段逐个回退到该服务商预设的默认值；`activeProfileId` 指向不存在的配置时变为 null。空列表会被保留（用户可能删掉了所有配置）。
 - 迁移：旧的单配置格式（`ai.providerId / baseUrl / model …`）读取时转换为 ID 为 `default` 的配置并设为启用。
 - 列表操作（添加、复制、删除、启用 / 停用）立即保存；表单编辑需要点"保存"，有未保存的修改时切换配置会先确认。
-- 阶段 3 的对话服务通过 `getActiveAIProfile` 取得当前配置及其密钥。
+- 对话服务通过 `getActiveAIProfile` 取得当前配置，再按配置 ID 读取密钥。
 - "恢复默认配置"不包含 AI 配置列表，避免一并删除用户的密钥；AI 配置只能在 AI 配置页逐个删除。
 
 Vue 的响应式对象是 Proxy，无法通过 `structuredClone` 或 IPC 的结构化克隆传输，所以所有发往 bridge 的数据都先经过 `plainClone`（JSON 往返）。

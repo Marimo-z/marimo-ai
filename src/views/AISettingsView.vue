@@ -8,6 +8,7 @@ import {
   AI_PROFILES_MAX,
   AI_PROVIDER_PRESETS,
   findProviderPreset,
+  MOCK_PROVIDER_ID,
   type AIProfile,
   type AIProviderId
 } from '../../shared/settings'
@@ -124,7 +125,10 @@ const preset = computed(() =>
 )
 const keyOptional = computed(() => preset.value?.keyOptional === true)
 
+const isMock = computed(() => draft.value?.providerId === MOCK_PROVIDER_ID)
+
 const urlWarning = computed(() => {
+  if (isMock.value) return ''
   const raw = draft.value?.baseUrl.trim() ?? ''
   if (!raw) return '请填写 API Base URL'
   try {
@@ -250,7 +254,7 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
   <div class="page">
     <PageHeader
       title="AI 配置"
-      description="可添加多个 OpenAI 兼容的模型服务，启用其中一个用于聊天"
+      description="可添加多个模型服务（OpenAI 兼容接口），启用其中一个用于聊天"
     >
       <el-dropdown trigger="click" :disabled="atLimit" @command="add">
         <el-button type="primary" :icon="Plus" :disabled="atLimit">添加 AI</el-button>
@@ -368,10 +372,18 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
                 </el-select>
               </el-form-item>
             </div>
-            <el-form-item label="API Base URL" :error="urlWarning">
+            <el-alert
+              v-if="isMock"
+              class="mock-note"
+              type="info"
+              show-icon
+              :closable="false"
+              title="模拟服务不联网、不需要 API Key，按关键词返回固定回复，用于体验和排查问题。"
+            />
+            <el-form-item v-if="!isMock" label="API Base URL" :error="urlWarning">
               <el-input v-model="form.baseUrl" placeholder="https://..." clearable />
             </el-form-item>
-            <el-form-item label="模型名称">
+            <el-form-item v-if="!isMock" label="模型名称">
               <el-input
                 v-model="form.model"
                 placeholder="例如 deepseek-flash、qwen-plus"
@@ -423,7 +435,11 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
           />
         </SettingsCard>
 
-        <SettingsCard title="API Key" description="每个配置单独保存，只在主进程中解密使用">
+        <SettingsCard
+          v-if="!isMock"
+          title="API Key"
+          description="每个配置单独保存，只在主进程中解密使用"
+        >
           <template #extra>
             <el-tag :type="keyTag.type">{{ keyTag.text }}</el-tag>
           </template>
@@ -632,6 +648,10 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
 
 .test-result {
   margin-top: 12px;
+}
+
+.mock-note {
+  margin-bottom: 18px;
 }
 
 .key-row {

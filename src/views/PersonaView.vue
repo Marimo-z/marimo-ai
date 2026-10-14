@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { onMounted } from 'vue'
 import { REPLY_LENGTHS, type ReplyLength } from '../../shared/settings'
+import { useChatStore } from '../app/stores/chat'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
 import { useSectionDraft } from '../composables/useSectionDraft'
@@ -9,6 +11,23 @@ const { draft, dirty, saving, save, revert } = useSectionDraft('persona')
 
 const LENGTH_LABELS: Record<ReplyLength, string> = { short: '简短', medium: '适中', long: '详细' }
 const TRAIT_SUGGESTIONS = ['好奇', '温柔', '傲娇', '毒舌', '话痨', '高冷', '元气', '呆萌', '认真']
+
+const chat = useChatStore()
+onMounted(() => void chat.load())
+
+async function clearHistory(): Promise<void> {
+  try {
+    await ElMessageBox.confirm('将删除全部聊天记录（包括已保存到本机的记录）。', '清空聊天历史', {
+      type: 'warning',
+      confirmButtonText: '清空',
+      cancelButtonText: '取消'
+    })
+  } catch {
+    return
+  }
+  await chat.clear()
+  ElMessage.success('聊天历史已清空')
+}
 
 async function onSave(): Promise<void> {
   if (!draft.value.name.trim()) {
@@ -77,7 +96,10 @@ async function onSave(): Promise<void> {
       </el-form>
     </SettingsCard>
 
-    <SettingsCard title="互动与记忆" description="以下选项在阶段 3 接入 AI 对话后生效">
+    <SettingsCard
+      title="互动与记忆"
+      description="主动搭话会定期请求模型，会消耗少量额度；勿扰、鼠标穿透或桌宠隐藏时不会搭话"
+    >
       <el-form label-position="left" label-width="160px" @submit.prevent>
         <el-form-item label="允许主动发起对话">
           <el-switch v-model="draft.proactive" />
@@ -93,11 +115,12 @@ async function onSave(): Promise<void> {
         </el-form-item>
         <el-form-item label="保存对话历史">
           <el-switch v-model="draft.keepHistory" />
+          <span class="hint switch-hint">关闭后重启即清空，本机已保存的记录会立即删除</span>
         </el-form-item>
         <el-form-item label="聊天历史">
-          <el-tooltip content="目前还没有聊天记录（阶段 3 启用）" placement="top">
-            <span><el-button disabled>清空聊天历史</el-button></span>
-          </el-tooltip>
+          <el-button :disabled="chat.messages.length === 0" @click="clearHistory">
+            清空聊天历史（{{ chat.messages.length }} 条）
+          </el-button>
         </el-form-item>
       </el-form>
     </SettingsCard>
@@ -107,5 +130,9 @@ async function onSave(): Promise<void> {
 <style scoped>
 .el-select {
   width: 100%;
+}
+
+.switch-hint {
+  margin: 0 0 0 12px;
 }
 </style>
