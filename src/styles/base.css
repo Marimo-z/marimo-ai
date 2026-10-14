@@ -1,0 +1,14 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: 'Microsoft YaHei UI', 'Segoe UI', 'PingFang SC', sans-serif;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
