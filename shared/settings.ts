@@ -39,13 +39,51 @@ export function findProviderPreset(id: string): AIProviderPreset | undefined {
   return AI_PROVIDER_PRESETS.find((p) => p.id === id)
 }
 
-export interface AISettings {
+/** One configured model service. Its API key is stored separately, keyed by `id`. */
+export interface AIProfile {
+  id: string
+  name: string
   providerId: AIProviderId
   baseUrl: string
   model: string
   timeoutMs: number
   temperature: number
   maxTokens: number
+}
+
+export interface AISettings {
+  /** The profile used for chat; null means AI is turned off. */
+  activeProfileId: string | null
+  profiles: AIProfile[]
+}
+
+export const AI_PROFILES_MAX = 20
+export const AI_PROFILE_NAME_MAX = 30
+export const AI_PROFILE_ID_PATTERN = /^[a-z0-9-]{1,40}$/
+
+/** Profile id given to settings migrated from the single-profile format. */
+export const LEGACY_AI_PROFILE_ID = 'default'
+
+export const DEFAULT_AI_PROFILE_FIELDS = {
+  timeoutMs: 30000,
+  temperature: 0.8,
+  maxTokens: 512
+} as const satisfies Partial<AIProfile>
+
+export function createAIProfile(id: string, providerId: AIProviderId, name?: string): AIProfile {
+  const preset = findProviderPreset(providerId)
+  return {
+    id,
+    name: name ?? preset?.name ?? '未命名',
+    providerId,
+    baseUrl: preset?.baseUrl ?? '',
+    model: preset?.model ?? '',
+    ...DEFAULT_AI_PROFILE_FIELDS
+  }
+}
+
+export function getActiveAIProfile(ai: AISettings): AIProfile | null {
+  return ai.profiles.find((p) => p.id === ai.activeProfileId) ?? null
 }
 
 export const REPLY_LENGTHS = ['short', 'medium', 'long'] as const
@@ -123,12 +161,8 @@ export function isSettingsSection(value: unknown): value is SettingsSection {
 export const DEFAULT_SETTINGS: AppSettings = {
   pet: DEFAULT_PET_SETTINGS,
   ai: {
-    providerId: 'deepseek',
-    baseUrl: 'https://api.deepseek.com',
-    model: 'deepseek-chat',
-    timeoutMs: 30000,
-    temperature: 0.8,
-    maxTokens: 512
+    activeProfileId: LEGACY_AI_PROFILE_ID,
+    profiles: [createAIProfile(LEGACY_AI_PROFILE_ID, 'deepseek')]
   },
   persona: {
     name: 'Marimo',

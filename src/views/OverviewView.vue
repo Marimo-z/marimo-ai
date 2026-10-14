@@ -16,15 +16,19 @@ const s = computed(() => store.settings)
 const preview = ref<InstanceType<typeof PetPreview> | null>(null)
 const info = ref<AppInfo | null>(null)
 
-const providerName = computed(() => findProviderPreset(s.value.ai.providerId)?.name ?? '未知')
-const keyOptional = computed(() => findProviderPreset(s.value.ai.providerId)?.keyOptional === true)
+const active = computed(() => store.activeAIProfile)
+const providerName = computed(() =>
+  active.value ? (findProviderPreset(active.value.providerId)?.name ?? '未知') : '-'
+)
 
 type TagType = 'success' | 'warning' | 'info' | 'danger'
 const modelStatus = computed<{ type: TagType; text: string }>(() => {
-  const test = store.lastTest
+  const profile = active.value
+  if (!profile) return { type: 'warning', text: '未启用' }
+  const test = store.lastTests[profile.id]
   if (test)
     return test.ok ? { type: 'success', text: '连接正常' } : { type: 'danger', text: '连接失败' }
-  if (!store.keyStatus.hasKey && !keyOptional.value) return { type: 'warning', text: '未设置密钥' }
+  if (!store.isAIProfileReady(profile)) return { type: 'warning', text: '未设置密钥' }
   return { type: 'info', text: '未测试' }
 })
 
@@ -45,14 +49,14 @@ async function testVoice(): Promise<void> {
 async function resetAll(): Promise<void> {
   try {
     await ElMessageBox.confirm(
-      '所有设置（桌宠、AI、人设、语音、游戏、外观）都会恢复为默认值。已保存的 API Key 不受影响。',
+      '桌宠、人设、语音、游戏和外观设置都会恢复为默认值。AI 配置列表及其 API Key 会保留，如需删除请在"AI 配置"页逐个操作。',
       '恢复默认配置',
       { type: 'warning', confirmButtonText: '恢复默认', cancelButtonText: '取消' }
     )
   } catch {
     return
   }
-  await store.reset()
+  await store.resetAllExceptAI()
   ElMessage.success('已恢复默认配置')
 }
 
@@ -88,10 +92,12 @@ onMounted(async () => {
     <div class="grid-3">
       <SettingsCard title="AI 模型">
         <dl class="facts">
+          <dt>当前</dt>
+          <dd :title="active?.name">{{ active?.name ?? '未启用任何配置' }}</dd>
           <dt>服务商</dt>
           <dd>{{ providerName }}</dd>
           <dt>模型</dt>
-          <dd>{{ s.ai.model || '未填写' }}</dd>
+          <dd>{{ active ? active.model || '未填写' : '-' }}</dd>
           <dt>状态</dt>
           <dd>
             <el-tag :type="modelStatus.type" size="small">{{ modelStatus.text }}</el-tag>

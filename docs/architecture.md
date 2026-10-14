@@ -76,8 +76,10 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 
 ### 密钥
 
-- API Key 通过 `safeStorage.encryptString`（Windows 上为 DPAPI）加密，以 base64 存入 `userData/secrets.json`，与普通配置分开。
-- 渲染进程只有 `getAIKeyStatus / setAIKey / deleteAIKey` 三个方法，**没有读取明文的接口**；明文只在主进程发请求时解密使用。
+- API Key 通过 `safeStorage.encryptString`（Windows 上为 DPAPI）加密，以 base64 存入 `userData/secrets.json`，与普通配置分开。每个 AI 配置一条，键名为 `ai:<配置 ID>`；读取时会丢弃不符合该格式的条目。
+- 渲染进程只有 `getAIKeyStatus / setAIKey(profileId) / deleteAIKey(profileId)` 三个方法，**没有读取明文的接口**；状态只返回"哪些配置 ID 有密钥"。明文只在主进程发请求时解密使用。
+- 只能为已保存的配置写入密钥。配置从列表中删除时，主进程在 `onChange` 中对比新旧列表，删除被移除配置的密钥。启动时不会清理"孤儿"密钥，以免配置文件损坏导致密钥被误删。
+- 旧版本的单个 `aiApiKey` 在首次加载时迁移为 `ai:default`，与配置迁移后的 `default` 配置对应。
 - 写入前校验：去除首尾空白，长度 1–512，不能包含空白字符。
 - `safeStorage` 不可用时拒绝保存（不会退回明文存储），面板会提示原因。
 - Pinia 状态只保存 `hasKey` 布尔值，不持久化任何东西。
@@ -88,7 +90,7 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 `testConnection` 在主进程中请求 `GET {baseUrl}/models`（OpenAI 兼容接口的标准端点，DeepSeek、通义千问兼容模式、OpenAI、Ollama 都支持）：
 
 - 除 `localhost / 127.0.0.1 / ::1` 外必须是 HTTPS，否则直接拒绝，避免密钥被明文发送。
-- 使用面板表单中的草稿配置（先经严格 schema 校验），所以无需保存就能测试。
+- 测试对象是一个 AI 配置的表单内容（先经严格 schema 校验），所以无需保存就能测试；使用的是该配置 ID 名下已保存的密钥。
 - 按状态码与异常归类为：地址格式错误、非 HTTPS、未保存密钥、密钥无效或无权限（401/403）、地址不存在（404）、限流（429）、服务端错误（5xx）、超时、网络错误。成功时返回延迟，以及所填模型是否在模型列表中（响应不是标准格式时显示为"未知"）。
 - 返回给页面的消息只包含类别和状态码，不包含密钥和服务器原始响应。
 
@@ -154,7 +156,33 @@ Electron 没有全局 mousemove 事件。主进程以 30Hz 轮询 `screen.getCur
    - 应用层：更新 `nativeTheme.themeSource`、开机启动项（仅打包版本）。
 3. 托盘或右键菜单修改开关也走同一个入口，所以面板中的状态始终与菜单一致。
 
-表单分两种：AI 和人设使用 `useSectionDraft`（本地草稿，"保存 / 撤销修改"；没有本地修改时会自动同步外部变化），其他页面即时生效。
+表单分两种：人设使用 `useSectionDraft`、AI 配置页对选中的单个配置维护草稿（"保存 / 撤销修改"；没有本地修改时会自动同步外部变化），其他页面即时生效。
+
+### AI 配置列表
+
+```ts
+interface AISettings {
+  activeProfileId: string | null // null = 未启用 AI
+  profiles: AIProfile[] // 最多 20 个
+}
+interface AIProfile {
+  id: string // 面板用 crypto.randomUUID() 生成，主进程校验 /^[a-z0-9-]{1,40}$/
+  name: string
+  providerId: AIProviderId
+  baseUrl: string
+  model: string
+  timeoutMs: number
+  temperature: number
+  maxTokens: number
+}
+```
+
+- 严格校验（更新时）：ID 格式、ID 不重复、`activeProfileId` 必须为 null 或指向存在的配置。
+- 读取容错：缺少可用 ID 的条目和重复 ID 被丢弃；其余字段逐个回退到该服务商预设的默认值；`activeProfileId` 指向不存在的配置时变为 null。空列表会被保留（用户可能删掉了所有配置）。
+- 迁移：旧的单配置格式（`ai.providerId / baseUrl / model …`）读取时转换为 ID 为 `default` 的配置并设为启用。
+- 列表操作（添加、复制、删除、启用 / 停用）立即保存；表单编辑需要点"保存"，有未保存的修改时切换配置会先确认。
+- 阶段 3 的对话服务通过 `getActiveAIProfile` 取得当前配置及其密钥。
+- "恢复默认配置"不包含 AI 配置列表，避免一并删除用户的密钥；AI 配置只能在 AI 配置页逐个删除。
 
 Vue 的响应式对象是 Proxy，无法通过 `structuredClone` 或 IPC 的结构化克隆传输，所以所有发往 bridge 的数据都先经过 `plainClone`（JSON 往返）。
 

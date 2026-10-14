@@ -4,7 +4,7 @@ import { registerPetIpc } from './ipc/pet-ipc'
 import { registerSettingsIpc } from './ipc/settings-ipc'
 import type { MenuActions } from './menus'
 import { ConfigStore } from './services/config-store'
-import { SecureStorage } from './services/secure-storage'
+import { aiKeyName, SecureStorage } from './services/secure-storage'
 import { SettingsService } from './services/settings-service'
 import { createTray } from './tray'
 import { PetWindow } from './windows/pet-window'
@@ -40,6 +40,10 @@ if (!app.requestSingleInstanceLock()) {
     }
 
     settings.onChange((next, previous) => {
+      const remaining = new Set(next.ai.profiles.map((p) => p.id))
+      for (const { id } of previous.ai.profiles) {
+        if (!remaining.has(id)) secrets.delete(aiKeyName(id))
+      }
       if (next.appearance.theme !== previous.appearance.theme) {
         nativeTheme.themeSource = next.appearance.theme
       }

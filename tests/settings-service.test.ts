@@ -48,11 +48,33 @@ describe('SettingsService', () => {
   })
 
   it('drops unknown fields from patches', () => {
-    service.update('ai', { model: 'qwen-plus', apiKey: 'sk-secret' } as never)
+    const [profile] = DEFAULT_SETTINGS.ai.profiles
+    service.update('ai', {
+      apiKey: 'sk-secret',
+      profiles: [{ ...profile, model: 'qwen-plus', apiKey: 'sk-secret' }]
+    } as never)
     store.flush()
     const saved = readFileSync(file, 'utf-8')
     expect(saved).toContain('qwen-plus')
     expect(saved).not.toContain('sk-secret')
+  })
+
+  it('rejects AI profile lists with duplicate ids or a missing active profile', () => {
+    const [profile] = DEFAULT_SETTINGS.ai.profiles
+    expect(() => service.update('ai', { profiles: [profile, { ...profile, name: 'B' }] })).toThrow(
+      SettingsValidationError
+    )
+    expect(() => service.update('ai', { activeProfileId: 'missing' })).toThrow(
+      SettingsValidationError
+    )
+    expect(() =>
+      service.update('ai', { profiles: [{ ...profile, id: 'Bad Id!' }], activeProfileId: null })
+    ).toThrow(SettingsValidationError)
+  })
+
+  it('allows turning AI off and removing every profile', () => {
+    expect(service.update('ai', { activeProfileId: null }).ai.activeProfileId).toBeNull()
+    expect(service.update('ai', { profiles: [] }).ai.profiles).toEqual([])
   })
 
   it('resets one section or everything while keeping the window position', () => {

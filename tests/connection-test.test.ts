@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 import { checkBaseUrl, testConnection } from '../electron/main/services/ai/connection-test'
-import { DEFAULT_SETTINGS, type AISettings } from '../shared/settings'
+import { createAIProfile, type AIProfile } from '../shared/settings'
 
 const KEY = 'sk-very-secret-key'
-const base: AISettings = { ...DEFAULT_SETTINGS.ai, baseUrl: 'https://api.example.com/v1/' }
+const base: AIProfile = {
+  ...createAIProfile('test', 'deepseek'),
+  baseUrl: 'https://api.example.com/v1/'
+}
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

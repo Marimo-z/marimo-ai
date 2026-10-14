@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseConfig } from '../electron/main/services/config-schema'
 import { DEFAULT_PET_SETTINGS } from '../shared/pet'
-import { DEFAULT_SETTINGS } from '../shared/settings'
+import { createAIProfile, DEFAULT_SETTINGS, LEGACY_AI_PROFILE_ID } from '../shared/settings'
 
 describe('parseConfig', () => {
   it('returns defaults for empty or invalid input', () => {
@@ -33,15 +33,52 @@ describe('parseConfig', () => {
 
   it('repairs invalid enum and array values per section', () => {
     const config = parseConfig({
-      ai: { providerId: 'evil', model: 'x' },
       persona: { traits: 'not-an-array', name: '小蓝' },
       appearance: { theme: 'purple' }
     })
-    expect(config.ai.providerId).toBe(DEFAULT_SETTINGS.ai.providerId)
-    expect(config.ai.model).toBe('x')
     expect(config.persona.traits).toEqual(DEFAULT_SETTINGS.persona.traits)
     expect(config.persona.name).toBe('小蓝')
     expect(config.appearance.theme).toBe('system')
+  })
+
+  it('migrates the single-profile AI format into a profile list', () => {
+    const config = parseConfig({
+      ai: { providerId: 'qwen', baseUrl: 'https://example.com/v1', model: 'qwen-max', maxTokens: 1 }
+    })
+    expect(config.ai.activeProfileId).toBe(LEGACY_AI_PROFILE_ID)
+    expect(config.ai.profiles).toEqual([
+      {
+        ...createAIProfile(LEGACY_AI_PROFILE_ID, 'qwen'),
+        baseUrl: 'https://example.com/v1',
+        model: 'qwen-max'
+      }
+    ])
+  })
+
+  it('repairs AI profiles one by one', () => {
+    const good = createAIProfile('a', 'deepseek', '工作')
+    const config = parseConfig({
+      ai: {
+        activeProfileId: 'b',
+        profiles: [
+          good,
+          { ...good, name: '重复 ID' },
+          { id: 'NOT VALID', name: 'x' },
+          'garbage',
+          { id: 'b', name: '', providerId: 'evil', temperature: 9, model: 'm' }
+        ]
+      }
+    })
+    expect(config.ai.profiles.map((p) => p.id)).toEqual(['a', 'b'])
+    expect(config.ai.profiles[1]).toEqual({ ...createAIProfile('b', 'custom'), model: 'm' })
+    expect(config.ai.activeProfileId).toBe('b')
+  })
+
+  it('keeps an empty profile list and clears a dangling active id', () => {
+    expect(parseConfig({ ai: { activeProfileId: 'x', profiles: [] } }).ai).toEqual({
+      activeProfileId: null,
+      profiles: []
+    })
   })
 
   it('drops a malformed window position', () => {
@@ -51,7 +88,11 @@ describe('parseConfig', () => {
   it('strips unknown keys so secrets cannot be smuggled into the plain config', () => {
     const config = parseConfig({
       apiKey: 'sk-test',
-      ai: { ...DEFAULT_SETTINGS.ai, apiKey: 'sk-test' },
+      ai: {
+        ...DEFAULT_SETTINGS.ai,
+        apiKey: 'sk-test',
+        profiles: [{ ...DEFAULT_SETTINGS.ai.profiles[0], apiKey: 'sk-test' }]
+      },
       pet: { ...DEFAULT_PET_SETTINGS, apiKey: 'x' }
     })
     expect(JSON.stringify(config)).not.toContain('sk-test')

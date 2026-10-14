@@ -1,8 +1,20 @@
 import { safeStorage } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import { AI_PROFILE_ID_PATTERN, LEGACY_AI_PROFILE_ID } from '../../../shared/settings'
 
-export type SecretName = 'aiApiKey'
+const AI_KEY_PREFIX = 'ai:'
+const LEGACY_AI_KEY = 'aiApiKey'
+
+export function aiKeyName(profileId: string): string {
+  return `${AI_KEY_PREFIX}${profileId}`
+}
+
+function isValidName(name: string): boolean {
+  return (
+    name.startsWith(AI_KEY_PREFIX) && AI_PROFILE_ID_PATTERN.test(name.slice(AI_KEY_PREFIX.length))
+  )
+}
 
 /**
  * Secrets encrypted with Electron safeStorage (DPAPI on Windows, bound to the OS user).
@@ -10,7 +22,7 @@ export type SecretName = 'aiApiKey'
  * Note: any program running as the same OS user can still ask DPAPI to decrypt it.
  */
 export class SecureStorage {
-  private cache: Partial<Record<SecretName, string>>
+  private cache: Record<string, string>
 
   constructor(private readonly filePath: string) {
     this.cache = this.load()
@@ -20,11 +32,11 @@ export class SecureStorage {
     return safeStorage.isEncryptionAvailable()
   }
 
-  has(name: SecretName): boolean {
+  has(name: string): boolean {
     return typeof this.cache[name] === 'string'
   }
 
-  get(name: SecretName): string | null {
+  get(name: string): string | null {
     const encrypted = this.cache[name]
     if (!encrypted || !this.available) return null
     try {
@@ -35,26 +47,47 @@ export class SecureStorage {
     }
   }
 
-  set(name: SecretName, value: string): void {
+  set(name: string, value: string): void {
+    if (!isValidName(name)) throw new Error('无效的密钥名称')
     if (!this.available) throw new Error('系统加密不可用，无法安全保存密钥')
     this.cache[name] = safeStorage.encryptString(value).toString('base64')
     this.save()
   }
 
-  delete(name: SecretName): void {
+  delete(name: string): void {
+    if (!(name in this.cache)) return
     delete this.cache[name]
     this.save()
   }
 
-  private load(): Partial<Record<SecretName, string>> {
+  /** Profile ids that currently have an AI key stored. */
+  aiProfileIds(): string[] {
+    return Object.keys(this.cache)
+      .filter((name) => name.startsWith(AI_KEY_PREFIX))
+      .map((name) => name.slice(AI_KEY_PREFIX.length))
+  }
+
+  private load(): Record<string, string> {
+    let raw: unknown
     try {
-      const raw = JSON.parse(readFileSync(this.filePath, 'utf-8')) as unknown
-      if (!raw || typeof raw !== 'object') return {}
-      const value = (raw as Record<string, unknown>).aiApiKey
-      return typeof value === 'string' ? { aiApiKey: value } : {}
+      raw = JSON.parse(readFileSync(this.filePath, 'utf-8'))
     } catch {
       return {}
     }
+    if (!raw || typeof raw !== 'object') return {}
+
+    const result: Record<string, string> = {}
+    for (const [name, value] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof value === 'string' && isValidName(name)) result[name] = value
+    }
+    const legacy = (raw as Record<string, unknown>)[LEGACY_AI_KEY]
+    const migrated = aiKeyName(LEGACY_AI_PROFILE_ID)
+    if (typeof legacy === 'string' && !(migrated in result)) {
+      result[migrated] = legacy
+      this.cache = result
+      this.save()
+    }
+    return result
   }
 
   private save(): void {

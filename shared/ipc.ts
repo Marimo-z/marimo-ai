@@ -1,5 +1,5 @@
 import type { PetEmotion, PetSettings } from './pet'
-import type { AISettings, AppSettings, SettingsSection } from './settings'
+import type { AIProfile, AppSettings, SettingsSection } from './settings'
 
 export const IPC = {
   petGetSettings: 'pet:get-settings',
@@ -44,8 +44,9 @@ export type Unsubscribe = () => void
 
 export type Result<T> = { ok: true; data: T } | { ok: false; error: string }
 
-export interface SecretStatus {
-  hasKey: boolean
+export interface AIKeyStatus {
+  /** Ids of the AI profiles that have a stored key. */
+  profileIds: string[]
   /** False when the OS cannot encrypt (then keys cannot be stored at all). */
   encryptionAvailable: boolean
 }
@@ -102,11 +103,11 @@ export interface SettingsBridge {
   reset(section?: SettingsSection): Promise<AppSettings>
   onChanged(listener: (settings: AppSettings) => void): Unsubscribe
   onNavigate(listener: (route: string) => void): Unsubscribe
-  getAIKeyStatus(): Promise<SecretStatus>
-  setAIKey(key: string): Promise<Result<SecretStatus>>
-  deleteAIKey(): Promise<SecretStatus>
-  /** Tests the given (possibly unsaved) settings, or the saved ones when omitted. */
-  testAIConnection(draft?: AISettings): Promise<ConnectionTestResult>
+  getAIKeyStatus(): Promise<AIKeyStatus>
+  setAIKey(profileId: string, key: string): Promise<Result<AIKeyStatus>>
+  deleteAIKey(profileId: string): Promise<AIKeyStatus>
+  /** Tests a saved profile with possibly unsaved edits; uses the key stored for `profile.id`. */
+  testAIConnection(profile: AIProfile): Promise<ConnectionTestResult>
   resetPetPosition(): Promise<void>
   previewSay(text: string, emotion?: PetEmotion): Promise<void>
   getAppInfo(): Promise<AppInfo>

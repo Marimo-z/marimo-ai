@@ -1,5 +1,5 @@
 import type { ConnectionErrorKind, ConnectionTestResult } from '../../../../shared/ipc'
-import type { AISettings } from '../../../../shared/settings'
+import type { AIProfile } from '../../../../shared/settings'
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]'])
 
@@ -56,7 +56,7 @@ function listModelIds(body: unknown): string[] | null {
  * the key or the response body.
  */
 export async function testConnection(
-  settings: AISettings,
+  settings: AIProfile,
   apiKey: string | null,
   fetchImpl: typeof fetch = fetch
 ): Promise<ConnectionTestResult> {

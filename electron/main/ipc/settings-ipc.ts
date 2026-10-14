@@ -1,10 +1,16 @@
 import { app, ipcMain, type IpcMainInvokeEvent } from 'electron'
-import { IPC, type AppInfo, type Result, type SecretStatus } from '../../../shared/ipc'
+import {
+  IPC,
+  type AIKeyStatus,
+  type AppInfo,
+  type ConnectionTestResult,
+  type Result
+} from '../../../shared/ipc'
 import { isPetEmotion } from '../../../shared/pet'
-import { isSettingsSection, type AISettings } from '../../../shared/settings'
+import { isSettingsSection } from '../../../shared/settings'
 import { testConnection } from '../services/ai/connection-test'
-import { formatIssues, sectionSchemas } from '../services/config-schema'
-import type { SecureStorage } from '../services/secure-storage'
+import { aiProfileSchema, formatIssues } from '../services/config-schema'
+import { aiKeyName, type SecureStorage } from '../services/secure-storage'
 import { SettingsValidationError, type SettingsService } from '../services/settings-service'
 import type { PetWindow } from '../windows/pet-window'
 import type { SettingsWindow } from '../windows/settings-window'
@@ -33,10 +39,13 @@ export function registerSettingsIpc({ settings, secrets, pet, panel }: Deps): vo
     })
   }
 
-  const secretStatus = (): SecretStatus => ({
-    hasKey: secrets.has('aiApiKey'),
+  const keyStatus = (): AIKeyStatus => ({
+    profileIds: secrets.aiProfileIds(),
     encryptionAvailable: secrets.available
   })
+
+  const profileExists = (id: unknown): id is string =>
+    typeof id === 'string' && settings.get().ai.profiles.some((p) => p.id === id)
 
   handle(IPC.settingsGet, () => settings.get())
 
@@ -56,37 +65,35 @@ export function registerSettingsIpc({ settings, secrets, pet, panel }: Deps): vo
     settings.reset(isSettingsSection(section) ? section : undefined)
   )
 
-  handle(IPC.secretsAIStatus, secretStatus)
+  handle(IPC.secretsAIStatus, keyStatus)
 
-  handle(IPC.secretsAISet, (key: unknown): Result<SecretStatus> => {
+  handle(IPC.secretsAISet, (profileId: unknown, key: unknown): Result<AIKeyStatus> => {
+    if (!profileExists(profileId)) return { ok: false, error: '该 AI 配置不存在，请先保存' }
     if (typeof key !== 'string') return { ok: false, error: '无效的 API Key' }
     const trimmed = key.trim()
     if (!trimmed || trimmed.length > MAX_KEY_LENGTH || /\s/.test(trimmed)) {
       return { ok: false, error: 'API Key 不能为空、不能包含空白字符，且长度不超过 512' }
     }
     try {
-      secrets.set('aiApiKey', trimmed)
-      return { ok: true, data: secretStatus() }
+      secrets.set(aiKeyName(profileId), trimmed)
+      return { ok: true, data: keyStatus() }
     } catch (error) {
       return { ok: false, error: (error as Error).message }
     }
   })
 
-  handle(IPC.secretsAIDelete, () => {
-    secrets.delete('aiApiKey')
-    return secretStatus()
+  handle(IPC.secretsAIDelete, (profileId: unknown) => {
+    if (typeof profileId === 'string') secrets.delete(aiKeyName(profileId))
+    return keyStatus()
   })
 
-  handle(IPC.aiTestConnection, async (draft: unknown) => {
-    let target: AISettings = settings.get().ai
-    if (draft !== undefined) {
-      const parsed = sectionSchemas.ai.safeParse(draft)
-      if (!parsed.success) {
-        return { ok: false, kind: 'invalid-url', message: formatIssues(parsed.error) }
-      }
-      target = parsed.data
+  handle(IPC.aiTestConnection, async (profile: unknown): Promise<ConnectionTestResult> => {
+    const parsed = aiProfileSchema.safeParse(profile)
+    if (!parsed.success) {
+      return { ok: false, kind: 'invalid-url', message: formatIssues(parsed.error) }
     }
-    return testConnection(target, secrets.get('aiApiKey'))
+    const key = profileExists(parsed.data.id) ? secrets.get(aiKeyName(parsed.data.id)) : null
+    return testConnection(parsed.data, key)
   })
 
   handle(IPC.petResetPosition, () => pet.resetPosition())

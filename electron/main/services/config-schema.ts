@@ -6,19 +6,42 @@ import {
   PET_SENSITIVITIES
 } from '../../../shared/pet'
 import {
+  AI_PROFILE_ID_PATTERN,
+  AI_PROFILE_NAME_MAX,
+  AI_PROFILES_MAX,
   AI_PROVIDER_IDS,
   ASR_PROVIDERS,
+  createAIProfile,
   DEFAULT_SETTINGS,
   DIALOGUE_FREQUENCIES,
+  findProviderPreset,
   GAME_DIFFICULTIES,
+  LEGACY_AI_PROFILE_ID,
   RECORD_MODES,
   REPLY_LENGTHS,
   SETTINGS_SECTIONS,
   THEME_MODES,
   TTS_PROVIDERS,
+  type AIProfile,
+  type AISettings,
   type AppSettings,
   type SettingsSection
 } from '../../../shared/settings'
+
+type FlatSection = Exclude<SettingsSection, 'ai'>
+
+const aiProfileShape = {
+  id: z.string().regex(AI_PROFILE_ID_PATTERN),
+  name: z.string().trim().min(1).max(AI_PROFILE_NAME_MAX),
+  providerId: z.enum(AI_PROVIDER_IDS),
+  baseUrl: z.string().trim().max(500),
+  model: z.string().trim().max(200),
+  timeoutMs: z.number().int().min(3000).max(120000),
+  temperature: z.number().min(0).max(2),
+  maxTokens: z.number().int().min(16).max(32768)
+}
+
+export const aiProfileSchema = z.object(aiProfileShape)
 
 const shapes = {
   pet: {
@@ -32,14 +55,6 @@ const shapes = {
     doNotDisturb: z.boolean(),
     sensitivity: z.enum(PET_SENSITIVITIES),
     doubleClickAction: z.enum(DOUBLE_CLICK_ACTIONS)
-  },
-  ai: {
-    providerId: z.enum(AI_PROVIDER_IDS),
-    baseUrl: z.string().trim().max(500),
-    model: z.string().trim().max(200),
-    timeoutMs: z.number().int().min(3000).max(120000),
-    temperature: z.number().min(0).max(2),
-    maxTokens: z.number().int().min(16).max(32768)
   },
   persona: {
     name: z.string().trim().min(1).max(20),
@@ -71,12 +86,34 @@ const shapes = {
   appearance: {
     theme: z.enum(THEME_MODES)
   }
-} satisfies Record<SettingsSection, z.ZodRawShape>
+} satisfies Record<FlatSection, z.ZodRawShape>
+
+const aiSchema = z
+  .object({
+    activeProfileId: z.string().nullable(),
+    profiles: z.array(aiProfileSchema).max(AI_PROFILES_MAX)
+  })
+  .superRefine((ai, ctx) => {
+    const ids = new Set<string>()
+    for (const profile of ai.profiles) {
+      if (ids.has(profile.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['profiles'],
+          message: `重复的配置 ID：${profile.id}`
+        })
+      }
+      ids.add(profile.id)
+    }
+    if (ai.activeProfileId !== null && !ids.has(ai.activeProfileId)) {
+      ctx.addIssue({ code: 'custom', path: ['activeProfileId'], message: '启用的配置不存在' })
+    }
+  })
 
 /** Strict schemas: used to validate updates coming from the control panel. */
 export const sectionSchemas = {
   pet: z.object(shapes.pet),
-  ai: z.object(shapes.ai),
+  ai: aiSchema,
   persona: z.object(shapes.persona),
   voice: z.object(shapes.voice),
   games: z.object(shapes.games),
@@ -84,7 +121,7 @@ export const sectionSchemas = {
 } satisfies { [K in SettingsSection]: z.ZodType<AppSettings[K]> }
 
 /** Lenient schema: each invalid field falls back to its default, so one bad value never resets the rest. */
-function lenientSection<K extends SettingsSection>(section: K): z.ZodType<AppSettings[K]> {
+function lenientSection<K extends FlatSection>(section: K): z.ZodType<AppSettings[K]> {
   const defaults = DEFAULT_SETTINGS[section] as unknown as Record<string, unknown>
   const shape: Record<string, z.ZodType> = {}
   for (const [key, schema] of Object.entries(shapes[section] as z.ZodRawShape)) {
@@ -93,8 +130,71 @@ function lenientSection<K extends SettingsSection>(section: K): z.ZodType<AppSet
   return z.object(shape).catch(structuredClone(defaults)) as unknown as z.ZodType<AppSettings[K]>
 }
 
+/**
+ * Parses one stored profile. Profiles without a usable id are dropped (their key could not be
+ * found anyway); every other invalid field falls back to the provider's default.
+ */
+function parseStoredProfile(raw: unknown): AIProfile | null {
+  if (!raw || typeof raw !== 'object') return null
+  const record = raw as Record<string, unknown>
+  const id = aiProfileShape.id.safeParse(record.id)
+  if (!id.success) return null
+  const providerId = aiProfileShape.providerId.catch('custom').parse(record.providerId)
+  const fallback = createAIProfile(id.data, providerId)
+  const result = { ...fallback } as Record<string, unknown>
+  for (const [key, schema] of Object.entries(aiProfileShape)) {
+    if (key === 'id' || key === 'providerId') continue
+    result[key] = (schema as z.ZodType).catch(fallback[key as keyof AIProfile]).parse(record[key])
+  }
+  return result as unknown as AIProfile
+}
+
+/** Converts the single-profile format used before multiple profiles were supported. */
+function migrateLegacyAI(raw: Record<string, unknown>): Record<string, unknown> {
+  if ('profiles' in raw || !('providerId' in raw || 'baseUrl' in raw || 'model' in raw)) return raw
+  const providerId = aiProfileShape.providerId.catch('custom').parse(raw.providerId)
+  return {
+    activeProfileId: LEGACY_AI_PROFILE_ID,
+    profiles: [
+      {
+        ...raw,
+        id: LEGACY_AI_PROFILE_ID,
+        name: findProviderPreset(providerId)?.name ?? '默认'
+      }
+    ]
+  }
+}
+
+function parseStoredAI(raw: unknown): AISettings {
+  if (!raw || typeof raw !== 'object') return structuredClone(DEFAULT_SETTINGS.ai)
+  const record = migrateLegacyAI(raw as Record<string, unknown>)
+  if (!Array.isArray(record.profiles)) return structuredClone(DEFAULT_SETTINGS.ai)
+
+  const profiles: AIProfile[] = []
+  const ids = new Set<string>()
+  for (const item of record.profiles) {
+    const profile = parseStoredProfile(item)
+    if (!profile || ids.has(profile.id)) continue
+    ids.add(profile.id)
+    profiles.push(profile)
+    if (profiles.length === AI_PROFILES_MAX) break
+  }
+  const active = record.activeProfileId
+  return {
+    activeProfileId: typeof active === 'string' && ids.has(active) ? active : null,
+    profiles
+  }
+}
+
+const lenientAI = z
+  .unknown()
+  .optional()
+  .transform(parseStoredAI) as unknown as z.ZodType<AISettings>
+
 const appConfigSchema = z.object({
-  ...(Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s, lenientSection(s)])) as {
+  ...(Object.fromEntries(
+    SETTINGS_SECTIONS.map((s) => [s, s === 'ai' ? lenientAI : lenientSection(s)])
+  ) as {
     [K in SettingsSection]: z.ZodType<AppSettings[K]>
   }),
   petWindowPosition: z.object({ x: z.number().int(), y: z.number().int() }).nullable().catch(null)

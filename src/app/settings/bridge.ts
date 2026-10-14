@@ -1,4 +1,4 @@
-import type { ConnectionTestResult, SecretStatus, SettingsBridge } from '../../../shared/ipc'
+import type { AIKeyStatus, ConnectionTestResult, SettingsBridge } from '../../../shared/ipc'
 import { DEFAULT_SETTINGS, type AppSettings } from '../../../shared/settings'
 
 /**
@@ -7,7 +7,7 @@ import { DEFAULT_SETTINGS, type AppSettings } from '../../../shared/settings'
  */
 function createBrowserPreviewBridge(): SettingsBridge {
   let settings: AppSettings = structuredClone(DEFAULT_SETTINGS)
-  let keyStatus: SecretStatus = { hasKey: false, encryptionAvailable: true }
+  let keyStatus: AIKeyStatus = { profileIds: [], encryptionAvailable: true }
   const listeners = new Set<(s: AppSettings) => void>()
   const emit = (): void => listeners.forEach((l) => l(structuredClone(settings)))
 
@@ -31,12 +31,15 @@ function createBrowserPreviewBridge(): SettingsBridge {
     },
     onNavigate: () => () => {},
     getAIKeyStatus: async () => keyStatus,
-    async setAIKey() {
-      keyStatus = { ...keyStatus, hasKey: true }
+    async setAIKey(profileId) {
+      keyStatus = { ...keyStatus, profileIds: [...new Set([...keyStatus.profileIds, profileId])] }
       return { ok: true, data: keyStatus }
     },
-    async deleteAIKey() {
-      keyStatus = { ...keyStatus, hasKey: false }
+    async deleteAIKey(profileId) {
+      keyStatus = {
+        ...keyStatus,
+        profileIds: keyStatus.profileIds.filter((id) => id !== profileId)
+      }
       return keyStatus
     },
     testAIConnection: async (): Promise<ConnectionTestResult> => ({
