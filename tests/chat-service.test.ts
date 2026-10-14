@@ -159,6 +159,34 @@ describe('ChatService', () => {
     expect(on.history.saved).toBeNull()
   })
 
+  it('reads replies aloud for voice input or when auto-speak is on, unless speech is false', async () => {
+    const cases = [
+      { autoSpeak: false, fromVoice: false, speech: true, expected: false },
+      { autoSpeak: false, fromVoice: true, speech: true, expected: true },
+      { autoSpeak: true, fromVoice: false, speech: true, expected: true },
+      { autoSpeak: true, fromVoice: true, speech: false, expected: false }
+    ]
+    for (const { autoSpeak, fromVoice, speech, expected } of cases) {
+      const presented: boolean[] = []
+      const settings = { ...structuredClone(DEFAULT_SETTINGS) }
+      settings.voice.autoSpeak = autoSpeak
+      const service = new ChatService({
+        getSettings: () => settings,
+        getKey: () => 'sk',
+        createProvider: () => ({
+          testConnection: vi.fn(),
+          chat: async () => JSON.stringify({ text: '嗯', emotion: 'idle', speech })
+        }),
+        history: memoryHistory(),
+        onState: () => {},
+        onPet: () => {},
+        presentReply: (_reply, readAloud) => presented.push(readAloud)
+      })
+      await service.send('hi', { fromVoice })
+      expect(presented).toEqual([expected])
+    }
+  })
+
   it('records proactive lines without a user message', async () => {
     const { service, chat } = setup()
     const result = await service.speakProactively()

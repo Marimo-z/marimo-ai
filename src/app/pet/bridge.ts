@@ -17,6 +17,7 @@ function createBrowserPreviewBridge(): PetBridge {
     startDrag: noop,
     endDrag: noop,
     showContextMenu: () => console.info('[preview] context menu is native in Electron'),
+    reportSpeech: noop,
     onCursor(listener: (point: CursorPoint) => void) {
       const handler = (e: MouseEvent): void => listener({ x: e.clientX, y: e.clientY })
       window.addEventListener('mousemove', handler)

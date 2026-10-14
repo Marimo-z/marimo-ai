@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { PetCommand } from '../../../shared/ipc'
 import { isPetEmotion, PET_ORB_BASE_SIZE } from '../../../shared/pet'
+import type { PetVoice } from '../../../shared/voice'
 import PetBubble from '../../components/pet/PetBubble.vue'
 import PetOrb from '../../components/pet/PetOrb.vue'
 import { useBlink } from '../../composables/useBlink'
@@ -18,6 +19,7 @@ import {
 } from '../../services/mock-dialogue'
 import { usePetStore } from '../stores/pet'
 import { petBridge } from './bridge'
+import { SpeechPlayer } from './speech-player'
 
 const store = usePetStore()
 const { settings, appearance, dialogue } = storeToRefs(store)
@@ -32,10 +34,31 @@ const blinking = useBlink(
 )
 useInteractiveRegions(petBridge)
 
+const player = new SpeechPlayer()
+
+function stopVoice(): void {
+  player.stop()
+}
+
+function playVoice(voice: PetVoice, text: string): void {
+  store.voicePlaying = true
+  void player.play(voice, text, (outcome, message) => {
+    store.voicePlaying = false
+    petBridge.reportSpeech(voice.id, outcome, message)
+  })
+}
+
 let lastLine: MockLine | undefined
 function speak(line: MockLine): void {
+  // Local lines must not replace a reply that is still being read aloud.
+  if (store.voicePlaying) return
   lastLine = line
   store.say(line.text, line.emotion)
+}
+
+function closeBubble(): void {
+  stopVoice()
+  store.dismissDialogue()
 }
 
 const gestures = usePetGestures(petBridge, {
@@ -61,10 +84,14 @@ function handleCommand(command: PetCommand): void {
     )
   } else if (command?.type === 'say') {
     if (typeof command.text === 'string' && command.text.trim()) {
+      stopVoice()
       store.say(command.text, isPetEmotion(command.emotion) ? command.emotion : undefined)
+      if (command.voice) playVoice(command.voice, command.text)
     } else {
       speak(pickLine(RANDOM_LINES, lastLine))
     }
+  } else if (command?.type === 'stop-speech') {
+    stopVoice()
   }
 }
 
@@ -83,6 +110,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearTimeout(greetingTimer)
+  stopVoice()
   unsubscribers.forEach((off) => off())
 })
 </script>
@@ -101,8 +129,9 @@ onBeforeUnmount(() => {
           :message-id="dialogue.id"
           :text="dialogue.text"
           :base-duration-ms="settings.bubbleDurationMs"
+          :hold="store.voicePlaying"
           @typing="(active) => (store.isSpeaking = active)"
-          @close="store.dismissDialogue()"
+          @close="closeBubble"
         />
       </Transition>
     </div>

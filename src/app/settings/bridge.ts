@@ -3,9 +3,11 @@ import type {
   AIKeyStatus,
   ChatBridge,
   ConnectionTestResult,
-  SettingsBridge
+  SettingsBridge,
+  VoiceBridge
 } from '../../../shared/ipc'
 import { DEFAULT_SETTINGS, type AppSettings } from '../../../shared/settings'
+import type { VoiceKeyStatus } from '../../../shared/voice'
 
 /**
  * In-memory stand-in used only when the page is opened in a normal browser during development
@@ -100,6 +102,35 @@ function createBrowserPreviewChatBridge(): ChatBridge {
   }
 }
 
+function createBrowserPreviewVoiceBridge(): VoiceBridge {
+  let keys: VoiceKeyStatus = { tts: false, asr: false, encryptionAvailable: true }
+  return {
+    getState: async () => ({ status: 'idle', lastError: null }),
+    onChanged: () => () => {},
+    testSpeak: async (text) => {
+      console.info('[preview] pet speaks:', text)
+      return { ok: true, data: null }
+    },
+    stop: async () => {},
+    transcribe: async () => ({ ok: true, data: '（浏览器预览）模拟识别结果' }),
+    getKeyStatus: async () => keys,
+    async setKey(kind) {
+      keys = { ...keys, [kind]: true }
+      return { ok: true, data: keys }
+    },
+    async deleteKey(kind) {
+      keys = { ...keys, [kind]: false }
+      return keys
+    }
+  }
+}
+
+function resolveVoiceBridge(): VoiceBridge {
+  if (window.marimo?.voice) return window.marimo.voice
+  if (import.meta.env.DEV) return createBrowserPreviewVoiceBridge()
+  throw new Error('Marimo preload bridge is unavailable')
+}
+
 function resolveBridge(): SettingsBridge {
   if (window.marimo?.settings) return window.marimo.settings
   if (import.meta.env.DEV) return createBrowserPreviewBridge()
@@ -114,3 +145,4 @@ function resolveChatBridge(): ChatBridge {
 
 export const settingsBridge = resolveBridge()
 export const chatBridge = resolveChatBridge()
+export const voiceBridge = resolveVoiceBridge()

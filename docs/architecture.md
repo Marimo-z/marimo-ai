@@ -44,16 +44,20 @@ electron/
       chat-service.ts        对话流程：单请求、取消、桌宠联动、历史
       chat-history.ts        对话历史文件（仅在开启保存时写入）
       proactive.ts           主动搭话的触发判断（纯函数）
+      voice/cloud.ts         OpenAI 兼容的 /audio/speech 与 /audio/transcriptions、WAV 校验
+      voice/voice-service.ts 朗读与识别的调度：打断、状态、播放回报
+    permissions.ts           权限处理：只允许控制面板使用麦克风
       pointer-tracker.ts     全局光标轮询（位置不变则不发 IPC）
       window-bounds.ts       多显示器可见性修正（纯函数）
       logo-bitmap.ts         logo 光栅化（纯函数）
-  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / settings / chat
+  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / settings / chat / voice
 shared/                      主进程与渲染进程共用的类型、默认值与 IPC 契约（pet / settings / theme / ipc）
 src/
-  app/pet/                   桌宠窗口入口（PetApp.vue、bridge.ts）
+  app/pet/                   桌宠窗口入口（PetApp.vue、bridge.ts、speech-player.ts 播放系统语音或音频）
   app/settings/              控制面板入口（SettingsApp.vue、bridge.ts）
   app/router/                面板路由与导航项
-  app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts（对话状态的镜像）
+  app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts / voice.ts（对话与朗读状态的镜像）
+  services/speech-recognition.ts 麦克风录音、转码为 WAV、识别器接口
   components/pet/            PetOrb / PetEyes / PetBubble
   components/common/         SettingsCard / PageHeader / PetPreview
   composables/               光标追踪、手势、眨眼、交互区域、待机浮动、表单草稿、主题
@@ -75,11 +79,12 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 ## 进程与安全
 
 - 所有窗口：`contextIsolation: true`、`nodeIntegration: false`、`sandbox: true`。
-- 两个窗口共用一个 preload，只暴露 `window.marimo.pet`、`window.marimo.settings` 和 `window.marimo.chat` 上的固定方法，不暴露 `ipcRenderer`，也不把 IPC event 对象转发给页面。
+- 两个窗口共用一个 preload，只暴露 `window.marimo.pet`、`settings`、`chat`、`voice` 上的固定方法，不暴露 `ipcRenderer`，也不把 IPC event 对象转发给页面。
 - 主进程的每个 IPC 处理器都会校验 `event.sender`：桌宠通道只接受桌宠窗口，面板通道只接受面板窗口。因此即使桌宠页面被注入脚本，也无法修改 AI 配置或写入密钥。
 - 设置更新使用严格的 zod schema（未知字段、越界值直接拒绝并返回错误信息）；读取配置文件时则按字段容错，坏字段回退到默认值，不影响其他字段。
 - 禁止新窗口（`setWindowOpenHandler` → deny）和页面导航（`will-navigate` → preventDefault）。
-- CSP：`default-src 'self'; script-src 'self'`。
+- CSP：`default-src 'self'; script-src 'self'`；桌宠窗口额外允许 `media-src blob:`，用于播放主进程传来的音频。
+- 权限：Electron 默认同意所有权限请求。`permissions.ts` 改为只允许控制面板申请纯音频的 `media` 权限（麦克风），摄像头、通知、定位等一律拒绝，桌宠窗口没有任何权限。
 - 气泡文本使用 `{{ }}` 渲染（纯文本），全项目不使用 `v-html`。
 - 配置 schema 会剥离未知字段，所以即使有人往 `config.json` 里写入 `apiKey`，也不会被保留或回写。
 
@@ -115,6 +120,25 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 - **桌宠联动**：发送后桌宠显示"思考"（`durationMs: 0`，即一直保持），收到回复后 `say` 文本并切换情绪；出错时用难过表情说明原因（取消时恢复平静）。
 - **历史**：用户消息在请求前写入，回复成功后追加助手消息，最多保留 200 条。开启"保存对话历史"时写入 `userData/chat-history.json`（原子写入；读取时逐条校验，坏条目跳过）；关闭该选项时删除文件，内存中的记录保留到应用退出。
 - **主动搭话**：主进程每 60 秒调用一次 `shouldSpeakProactively`。只有在功能开启、桌宠可见、未开免打扰和鼠标穿透、没有进行中的请求、且距离上次互动超过设定间隔时，才会附加一条"主动说句话"的指令请求模型。失败时不打扰用户。
+
+### 语音
+
+规格书第 7 节的两个接口：
+
+- **识别**（`SpeechRecognitionProvider`：`start / stop / cancel / onFinalResult / onError`，`onPartialResult` 预留）：`RecordingRecognizer` 在控制面板中用 `getUserMedia` + `MediaRecorder` 录音，用 `OfflineAudioContext` 重采样为 16 kHz 单声道，编码为 16 位 PCM WAV，通过 `voice:transcribe` 交给主进程。主进程校验 WAV 头和大小（≤ 4 MB），再以 multipart 方式调用 `POST {Base URL}/audio/transcriptions`。没有使用 Chromium 的 Web Speech 识别：它在 Electron 中需要 Google 的私有密钥，无法使用。
+- **合成**（`speak / stop / getVoices`）：
+  - 系统语音：主进程把文字和参数（音色名、语速、音调、音量）发给桌宠窗口，由 `speechSynthesis` 朗读；音色列表由控制面板读取本机的 `speechSynthesis.getVoices()`。没有指定音色或音色已卸载时，优先选本机的中文语音。
+  - 在线语音：主进程调用 `POST {Base URL}/audio/speech`（`response_format: mp3`，≤ 10 MB），把音频字节发给桌宠窗口，由 `<audio>` 播放 blob URL；音量在播放端设置，音调不支持。
+  - 模拟：只显示气泡。
+
+调度（`VoiceService`）：
+
+- 同一时间只有一句话。每句话有递增的 `id`，新的一句或"停止"都会打断上一句（中止合成请求，或通知桌宠停止播放）。桌宠播放结束或出错时用 `pet:speech-report` 回报 `id`，过期的回报被忽略；如果一直没有回报（例如窗口重载），5 分钟后自动复位。
+- 在线合成失败时，回复仍以普通气泡显示，并把错误写入 `VoiceState.lastError`，在聊天页和语音设置页显示。
+- 朗读条件：`reply.speech && (语音输入 || autoSpeak)`，且未开启免打扰；开启免打扰时会停止正在进行的朗读。
+- 桌宠在朗读期间保持气泡（`PetBubble` 的 `hold`），进入 talking 状态；朗读期间不会被单击时的本地台词覆盖，保证气泡与正在朗读的内容一致。
+
+语音服务的 API Key 存为 `voice:tts` 和 `voice:asr`，与 AI 配置的密钥分开，同样只在主进程解密。
 
 ## 关键实现
 

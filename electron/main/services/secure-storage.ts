@@ -2,15 +2,22 @@ import { safeStorage } from 'electron'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { AI_PROFILE_ID_PATTERN, LEGACY_AI_PROFILE_ID } from '../../../shared/settings'
+import { VOICE_KEY_KINDS, type VoiceKeyKind } from '../../../shared/voice'
 
 const AI_KEY_PREFIX = 'ai:'
 const LEGACY_AI_KEY = 'aiApiKey'
+const VOICE_KEY_NAMES = new Set(VOICE_KEY_KINDS.map(voiceKeyName))
 
 export function aiKeyName(profileId: string): string {
   return `${AI_KEY_PREFIX}${profileId}`
 }
 
+export function voiceKeyName(kind: VoiceKeyKind): string {
+  return `voice:${kind}`
+}
+
 function isValidName(name: string): boolean {
+  if (VOICE_KEY_NAMES.has(name)) return true
   return (
     name.startsWith(AI_KEY_PREFIX) && AI_PROFILE_ID_PATTERN.test(name.slice(AI_KEY_PREFIX.length))
   )

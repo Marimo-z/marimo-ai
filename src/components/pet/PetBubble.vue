@@ -9,8 +9,10 @@ const props = withDefaults(
     text: string
     baseDurationMs: number
     typewriter?: boolean
+    /** Keeps the bubble up (e.g. while the line is being read aloud). */
+    hold?: boolean
   }>(),
-  { typewriter: true }
+  { typewriter: true, hold: false }
 )
 
 const emit = defineEmits<{
@@ -37,7 +39,7 @@ function stopTimers(): void {
 function scheduleHide(): void {
   if (hideTimer) clearTimeout(hideTimer)
   hideTimer = null
-  if (!typingDone || hovering || expanded.value) return
+  if (!typingDone || hovering || expanded.value || props.hold) return
   hideTimer = setTimeout(() => emit('close'), bubbleHoldMs(props.text, props.baseDurationMs))
 }
 
@@ -79,6 +81,7 @@ function onHover(active: boolean): void {
 }
 
 watch(() => props.messageId, start, { immediate: true })
+watch(() => props.hold, scheduleHide)
 
 watch(visibleText, async () => {
   if (typingDone) return

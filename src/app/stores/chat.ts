@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { ChatErrorKind, ChatMessage } from '../../../shared/chat'
+import type { ChatSendOptions } from '../../../shared/ipc'
 import { chatBridge as bridge } from '../settings/bridge'
 
 export interface ChatError {
@@ -28,9 +29,9 @@ export const useChatStore = defineStore('chat', () => {
     loaded.value = true
   }
 
-  async function send(text: string): Promise<boolean> {
+  async function send(text: string, options?: ChatSendOptions): Promise<boolean> {
     lastError.value = null
-    const result = await bridge.send(text)
+    const result = await bridge.send(text, options)
     if (!result.ok && result.kind !== 'cancelled') {
       lastError.value = { kind: result.kind, message: result.message }
     }

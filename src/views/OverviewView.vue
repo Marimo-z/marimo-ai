@@ -4,14 +4,17 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import type { AppInfo } from '../../shared/ipc'
 import { findProviderPreset } from '../../shared/settings'
+import { ASR_PROVIDER_LABELS, TTS_PROVIDER_LABELS } from '../../shared/voice'
 import { settingsBridge } from '../app/settings/bridge'
 import { useChatStore } from '../app/stores/chat'
 import { useSettingsStore } from '../app/stores/settings'
+import { useVoiceStore } from '../app/stores/voice'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
 import PetPreview from '../components/pet/PetPreview.vue'
 
 const store = useSettingsStore()
+const voice = useVoiceStore()
 const router = useRouter()
 const s = computed(() => store.settings)
 const preview = ref<InstanceType<typeof PetPreview> | null>(null)
@@ -43,8 +46,11 @@ async function sayHello(): Promise<void> {
 }
 
 async function testVoice(): Promise<void> {
-  await settingsBridge.previewSay('这是一段语音测试。当前为模拟语音，只显示气泡。', 'curious')
-  ElMessage.info('当前为模拟语音服务：桌宠会显示气泡，但不会发声')
+  const result = await voice.testSpeak(`你好呀，我是${s.value.persona.name}，这是一段语音测试。`)
+  if (!result.ok) ElMessage.error(result.error)
+  else if (s.value.voice.ttsProvider === 'mock') {
+    ElMessage.info('当前为模拟语音：桌宠会显示气泡，但不会发声')
+  }
 }
 
 async function resetAll(): Promise<void> {
@@ -114,9 +120,9 @@ onMounted(async () => {
       <SettingsCard title="语音服务">
         <dl class="facts">
           <dt>识别</dt>
-          <dd>模拟（Mock）</dd>
+          <dd>{{ ASR_PROVIDER_LABELS[s.voice.asrProvider] }}</dd>
           <dt>合成</dt>
-          <dd>模拟（Mock）</dd>
+          <dd>{{ TTS_PROVIDER_LABELS[s.voice.ttsProvider] }}</dd>
           <dt>自动朗读</dt>
           <dd>{{ s.voice.autoSpeak ? '开启' : '关闭' }}</dd>
         </dl>

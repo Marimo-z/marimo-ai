@@ -2,12 +2,13 @@ import { randomUUID } from 'node:crypto'
 import {
   CHAT_HISTORY_MAX,
   CHAT_INPUT_MAX,
+  type AIReply,
   type ChatErrorKind,
   type ChatMessage,
   type ChatSendResult,
   type ChatState
 } from '../../../shared/chat'
-import type { PetCommand } from '../../../shared/ipc'
+import type { ChatSendOptions, PetCommand } from '../../../shared/ipc'
 import {
   findProviderPreset,
   getActiveAIProfile,
@@ -30,6 +31,8 @@ export interface ChatServiceDeps {
   onState(state: ChatState): void
   /** Drives the pet's bubble and expression. */
   onPet(command: PetCommand): void
+  /** Shows a reply on the pet, optionally read aloud; defaults to a plain bubble. */
+  presentReply?(reply: AIReply, readAloud: boolean): void
   now?(): number
 }
 
@@ -68,7 +71,8 @@ export class ChatService {
     return { messages: this.messages.map((m) => ({ ...m })), busy: this.busy }
   }
 
-  async send(input: unknown): Promise<ChatSendResult> {
+  async send(input: unknown, options?: unknown): Promise<ChatSendResult> {
+    const fromVoice = (options as ChatSendOptions | undefined)?.fromVoice === true
     if (typeof input !== 'string' || !input.trim()) {
       return this.fail('invalid-input', '消息不能为空')
     }
@@ -85,7 +89,7 @@ export class ChatService {
     }
 
     this.append({ id: randomUUID(), role: 'user', text, at: this.now() })
-    return this.request(ready.provider, undefined, false)
+    return this.request(ready.provider, undefined, false, fromVoice)
   }
 
   /** Asks the model for an unprompted line. Failures are silent apart from the return value. */
@@ -93,7 +97,7 @@ export class ChatService {
     if (this.busy) return this.fail('busy', '正在回复中')
     const ready = this.resolveProvider()
     if (!ready.ok) return ready
-    return this.request(ready.provider, PROACTIVE_INSTRUCTION, true)
+    return this.request(ready.provider, PROACTIVE_INSTRUCTION, true, false)
   }
 
   cancel(): void {
@@ -116,7 +120,8 @@ export class ChatService {
   private async request(
     provider: AIProvider,
     extraInstruction: string | undefined,
-    proactive: boolean
+    proactive: boolean,
+    fromVoice: boolean
   ): Promise<ChatSendResult> {
     const controller = new AbortController()
     this.controller = controller
@@ -141,7 +146,9 @@ export class ChatService {
         ...(proactive ? { proactive: true } : {})
       }
       this.append(message)
-      this.deps.onPet({ type: 'say', text: reply.text, emotion: reply.emotion })
+      const readAloud = reply.speech && (fromVoice || this.deps.getSettings().voice.autoSpeak)
+      if (this.deps.presentReply) this.deps.presentReply(reply, readAloud)
+      else this.deps.onPet({ type: 'say', text: reply.text, emotion: reply.emotion })
       return { ok: true, reply: message }
     } catch (error) {
       const failure =

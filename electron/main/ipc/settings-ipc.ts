@@ -11,8 +11,10 @@ import { isSettingsSection } from '../../../shared/settings'
 import { createProvider } from '../services/ai/provider'
 import type { ChatService } from '../services/chat-service'
 import { aiProfileSchema, formatIssues } from '../services/config-schema'
-import { aiKeyName, type SecureStorage } from '../services/secure-storage'
+import { aiKeyName, voiceKeyName, type SecureStorage } from '../services/secure-storage'
 import { SettingsValidationError, type SettingsService } from '../services/settings-service'
+import type { VoiceService } from '../services/voice/voice-service'
+import { isVoiceKeyKind, type VoiceKeyStatus } from '../../../shared/voice'
 import type { PetWindow } from '../windows/pet-window'
 import type { SettingsWindow } from '../windows/settings-window'
 
@@ -25,9 +27,20 @@ interface Deps {
   pet: PetWindow
   panel: SettingsWindow
   chat: ChatService
+  voice: VoiceService
 }
 
-export function registerSettingsIpc({ settings, secrets, pet, panel, chat }: Deps): void {
+/** Trims and checks an API key; returns an error message when it is unusable. */
+function normalizeKey(key: unknown): { ok: true; key: string } | { ok: false; error: string } {
+  if (typeof key !== 'string') return { ok: false, error: '无效的 API Key' }
+  const trimmed = key.trim()
+  if (!trimmed || trimmed.length > MAX_KEY_LENGTH || /\s/.test(trimmed)) {
+    return { ok: false, error: 'API Key 不能为空、不能包含空白字符，且长度不超过 512' }
+  }
+  return { ok: true, key: trimmed }
+}
+
+export function registerSettingsIpc({ settings, secrets, pet, panel, chat, voice }: Deps): void {
   /** Registers a handler that only the control panel may call. */
   const handle = <A extends unknown[], R>(
     channel: string,
@@ -71,13 +84,10 @@ export function registerSettingsIpc({ settings, secrets, pet, panel, chat }: Dep
 
   handle(IPC.secretsAISet, (profileId: unknown, key: unknown): Result<AIKeyStatus> => {
     if (!profileExists(profileId)) return { ok: false, error: '该 AI 配置不存在，请先保存' }
-    if (typeof key !== 'string') return { ok: false, error: '无效的 API Key' }
-    const trimmed = key.trim()
-    if (!trimmed || trimmed.length > MAX_KEY_LENGTH || /\s/.test(trimmed)) {
-      return { ok: false, error: 'API Key 不能为空、不能包含空白字符，且长度不超过 512' }
-    }
+    const normalized = normalizeKey(key)
+    if (!normalized.ok) return normalized
     try {
-      secrets.set(aiKeyName(profileId), trimmed)
+      secrets.set(aiKeyName(profileId), normalized.key)
       return { ok: true, data: keyStatus() }
     } catch (error) {
       return { ok: false, error: (error as Error).message }
@@ -99,9 +109,40 @@ export function registerSettingsIpc({ settings, secrets, pet, panel, chat }: Dep
   })
 
   handle(IPC.chatGetState, () => chat.state())
-  handle(IPC.chatSend, (text: unknown) => chat.send(text))
+  handle(IPC.chatSend, (text: unknown, options: unknown) => chat.send(text, options))
   handle(IPC.chatCancel, () => chat.cancel())
   handle(IPC.chatClear, () => chat.clear())
+
+  const voiceKeyStatus = (): VoiceKeyStatus => ({
+    tts: secrets.has(voiceKeyName('tts')),
+    asr: secrets.has(voiceKeyName('asr')),
+    encryptionAvailable: secrets.available
+  })
+
+  handle(IPC.voiceGetState, () => voice.state())
+  handle(IPC.voiceStop, () => voice.stop())
+  handle(IPC.voiceTestSpeak, (text: unknown): Promise<Result<null>> | Result<null> => {
+    if (typeof text !== 'string' || !text.trim()) return { ok: false, error: '请输入测试文本' }
+    pet.show()
+    return voice.speak(text.slice(0, MAX_PREVIEW_TEXT), 'happy')
+  })
+  handle(IPC.voiceTranscribe, (wav: unknown) => voice.transcribe(wav))
+  handle(IPC.voiceKeyStatus, voiceKeyStatus)
+  handle(IPC.voiceKeySet, (kind: unknown, key: unknown): Result<VoiceKeyStatus> => {
+    if (!isVoiceKeyKind(kind)) return { ok: false, error: '无效的密钥类型' }
+    const normalized = normalizeKey(key)
+    if (!normalized.ok) return normalized
+    try {
+      secrets.set(voiceKeyName(kind), normalized.key)
+      return { ok: true, data: voiceKeyStatus() }
+    } catch (error) {
+      return { ok: false, error: (error as Error).message }
+    }
+  })
+  handle(IPC.voiceKeyDelete, (kind: unknown) => {
+    if (isVoiceKeyKind(kind)) secrets.delete(voiceKeyName(kind))
+    return voiceKeyStatus()
+  })
 
   handle(IPC.petResetPosition, () => pet.resetPosition())
 

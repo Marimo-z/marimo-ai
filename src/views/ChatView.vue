@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Delete, Promotion, VideoPause } from '@element-plus/icons-vue'
+import { Delete, Microphone, Mute, Promotion, VideoPause } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -10,11 +10,14 @@ import { PET_EMOTION_LABELS } from '../../shared/pet'
 import { findProviderPreset, MOCK_PROVIDER_ID } from '../../shared/settings'
 import { useChatStore } from '../app/stores/chat'
 import { useSettingsStore } from '../app/stores/settings'
+import { useVoiceStore } from '../app/stores/voice'
 import PageHeader from '../components/common/PageHeader.vue'
+import { useVoiceInput } from '../composables/useVoiceInput'
 
 const router = useRouter()
 const settings = useSettingsStore()
 const chat = useChatStore()
+const voice = useVoiceStore()
 const { messages, busy, lastError } = storeToRefs(chat)
 
 const profile = computed(() => settings.activeAIProfile)
@@ -80,6 +83,21 @@ function onKeydown(event: Event | KeyboardEvent): void {
   void send()
 }
 
+const voiceInput = useVoiceInput((text) => void chat.send(text, { fromVoice: true }))
+const { phase: micPhase, level: micLevel, elapsedMs: micElapsed, error: micError } = voiceInput
+const micBusy = computed(() => micPhase.value !== 'idle')
+const voiceError = computed(() => micError.value ?? voice.state.lastError)
+
+function toggleMic(): void {
+  if (micPhase.value === 'recording') void voiceInput.stop()
+  else if (micPhase.value === 'idle') void voiceInput.start()
+}
+
+const formatSeconds = (ms: number): string => {
+  const s = Math.floor(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 async function clearHistory(): Promise<void> {
   try {
     await ElMessageBox.confirm('将删除全部聊天记录（包括已保存到本机的记录）。', '清空聊天记录', {
@@ -104,7 +122,7 @@ async function scrollToBottom(): Promise<void> {
 watch(() => [messages.value.length, busy.value, lastError.value], scrollToBottom)
 
 onMounted(async () => {
-  await chat.load()
+  await Promise.all([chat.load(), voice.load()])
   await scrollToBottom()
 })
 </script>
@@ -112,6 +130,9 @@ onMounted(async () => {
 <template>
   <div class="page chat-page">
     <PageHeader title="聊天" :description="description">
+      <el-button v-if="voice.active" :icon="Mute" @click="voice.stop()">
+        {{ voice.state.status === 'synthesizing' ? '取消朗读' : '停止朗读' }}
+      </el-button>
       <el-button :icon="Delete" :disabled="messages.length === 0" @click="clearHistory">
         清空记录
       </el-button>
@@ -162,9 +183,43 @@ onMounted(async () => {
           前往 AI 配置
         </el-button>
       </el-alert>
+
+      <el-alert
+        v-if="voiceError"
+        class="error"
+        type="warning"
+        show-icon
+        :closable="false"
+        :title="voiceError"
+      >
+        <el-button link type="primary" @click="router.push('/voice')">前往语音设置</el-button>
+      </el-alert>
     </section>
 
+    <div v-if="micBusy" class="recording" role="status">
+      <template v-if="micPhase === 'recording'">
+        <span class="dot" />
+        <span>正在录音 {{ formatSeconds(micElapsed) }}</span>
+        <span class="meter"><i :style="{ width: `${Math.round(micLevel * 100)}%` }" /></span>
+        <span class="hint">再次点击麦克风结束，最长 60 秒</span>
+        <el-button link @click="voiceInput.cancel()">取消</el-button>
+      </template>
+      <span v-else>正在识别…</span>
+    </div>
+
     <footer class="composer">
+      <el-tooltip :content="micPhase === 'recording' ? '结束录音' : '语音输入'" placement="top">
+        <el-button
+          class="mic"
+          :class="{ recording: micPhase === 'recording' }"
+          :icon="Microphone"
+          :type="micPhase === 'recording' ? 'danger' : 'default'"
+          :loading="micPhase === 'transcribing'"
+          :disabled="busy && micPhase === 'idle'"
+          aria-label="语音输入"
+          @click="toggleMic"
+        />
+      </el-tooltip>
       <el-input
         v-model="input"
         type="textarea"
@@ -306,5 +361,46 @@ onMounted(async () => {
 
 .composer .el-button {
   height: 40px;
+}
+
+.composer .mic {
+  width: 40px;
+  margin-left: 0;
+}
+
+.recording {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+  font-size: 13px;
+  color: var(--mo-text-secondary);
+}
+
+.recording .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--el-color-danger);
+  animation: blink 1.2s infinite ease-in-out;
+}
+
+.recording .meter {
+  width: 120px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--mo-bg-soft);
+}
+
+.recording .meter i {
+  display: block;
+  height: 100%;
+  background: var(--mo-accent);
+  transition: width 100ms linear;
+}
+
+.recording .hint {
+  margin-left: auto;
 }
 </style>

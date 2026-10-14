@@ -1,4 +1,10 @@
 import { DEFAULT_PET_SETTINGS, type PetSettings } from './pet'
+import {
+  ASR_SERVICE_PRESETS,
+  TTS_SERVICE_PRESETS,
+  type ASRProviderId,
+  type TTSProviderId
+} from './voice'
 
 export interface AIProviderPreset {
   id: string
@@ -110,19 +116,22 @@ export interface PersonaSettings {
   keepHistory: boolean
 }
 
-export const ASR_PROVIDERS = ['mock'] as const
-export const TTS_PROVIDERS = ['mock'] as const
-export const RECORD_MODES = ['hold', 'toggle'] as const
-
 export interface VoiceSettings {
-  asrProvider: (typeof ASR_PROVIDERS)[number]
-  ttsProvider: (typeof TTS_PROVIDERS)[number]
-  voiceId: string
+  ttsProvider: TTSProviderId
+  /** Windows voice name; empty picks a Chinese voice automatically. */
+  systemVoice: string
+  ttsBaseUrl: string
+  ttsModel: string
+  ttsVoice: string
   rate: number
   volume: number
+  /** Only the system voice supports pitch. */
   pitch: number
+  /** Reads replies aloud; replies to voice input are always read. */
   autoSpeak: boolean
-  recordMode: (typeof RECORD_MODES)[number]
+  asrProvider: ASRProviderId
+  asrBaseUrl: string
+  asrModel: string
 }
 
 export const GAME_DIFFICULTIES = ['easy', 'normal', 'hard'] as const
@@ -185,14 +194,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
     keepHistory: true
   },
   voice: {
-    asrProvider: 'mock',
-    ttsProvider: 'mock',
-    voiceId: 'mock-default',
+    ttsProvider: 'system',
+    systemVoice: '',
+    ttsBaseUrl: TTS_SERVICE_PRESETS[0].baseUrl,
+    ttsModel: TTS_SERVICE_PRESETS[0].model,
+    ttsVoice: TTS_SERVICE_PRESETS[0].voice,
     rate: 1,
     volume: 0.8,
     pitch: 1,
     autoSpeak: false,
-    recordMode: 'hold'
+    asrProvider: 'openai-compatible',
+    asrBaseUrl: ASR_SERVICE_PRESETS[0].baseUrl,
+    asrModel: ASR_SERVICE_PRESETS[0].model
   },
   games: {
     dialogueEnabled: true,

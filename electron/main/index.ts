@@ -8,8 +8,10 @@ import { ChatHistoryStore } from './services/chat-history'
 import { ChatService } from './services/chat-service'
 import { ConfigStore } from './services/config-store'
 import { PROACTIVE_CHECK_INTERVAL_MS, shouldSpeakProactively } from './services/proactive'
-import { aiKeyName, SecureStorage } from './services/secure-storage'
+import { restrictPermissions } from './permissions'
+import { aiKeyName, SecureStorage, voiceKeyName } from './services/secure-storage'
 import { SettingsService } from './services/settings-service'
+import { VoiceService } from './services/voice/voice-service'
 import { createTray } from './tray'
 import { PetWindow } from './windows/pet-window'
 import { SettingsWindow } from './windows/settings-window'
@@ -39,13 +41,21 @@ if (!app.requestSingleInstanceLock()) {
 
     const pet = new PetWindow(store, settings)
     const panel = new SettingsWindow()
+    restrictPermissions(() => panel.webContents)
+    const voice = new VoiceService({
+      getSettings: () => settings.get(),
+      getKey: (kind) => secrets.get(voiceKeyName(kind)),
+      onPet: (command) => pet.sendCommand(command),
+      onState: (state) => panel.broadcastVoice(state)
+    })
     const chat = new ChatService({
       getSettings: () => settings.get(),
       getKey: (profileId) => secrets.get(aiKeyName(profileId)),
       createProvider: (profile, key) => createProvider(profile, key),
       history: new ChatHistoryStore(join(userData, 'chat-history.json')),
       onState: (state) => panel.broadcastChat(state),
-      onPet: (command) => pet.sendCommand(command)
+      onPet: (command) => pet.sendCommand(command),
+      presentReply: (reply, readAloud) => void voice.present(reply.text, reply.emotion, readAloud)
     })
     proactiveTimer = setInterval(() => {
       const context = {
@@ -81,11 +91,12 @@ if (!app.requestSingleInstanceLock()) {
       if (next.pet.launchAtLogin !== previous.pet.launchAtLogin) {
         applyLaunchAtLogin(next.pet.launchAtLogin)
       }
+      if (next.pet.doNotDisturb && !previous.pet.doNotDisturb) voice.stop()
       panel.broadcast(next)
     })
 
-    registerPetIpc(pet, actions)
-    registerSettingsIpc({ settings, secrets, pet, panel, chat })
+    registerPetIpc(pet, actions, voice)
+    registerSettingsIpc({ settings, secrets, pet, panel, chat, voice })
     pet.create()
     tray = createTray(pet, actions)
 
@@ -96,6 +107,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('before-quit', () => {
       if (proactiveTimer) clearInterval(proactiveTimer)
       chat.cancel()
+      voice.dispose()
       pet.prepareQuit()
       store.flush()
       tray?.destroy()

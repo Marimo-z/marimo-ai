@@ -98,4 +98,28 @@ describe('parseConfig', () => {
     expect(JSON.stringify(config)).not.toContain('sk-test')
     expect(JSON.stringify(config)).not.toContain('apiKey')
   })
+
+  it('moves voice settings from the mock-only format to the real providers', () => {
+    const legacy = parseConfig({
+      voice: {
+        asrProvider: 'mock',
+        ttsProvider: 'mock',
+        voiceId: 'mock-default',
+        rate: 1.4,
+        volume: 0.5,
+        pitch: 1,
+        autoSpeak: true,
+        recordMode: 'hold'
+      }
+    })
+    expect(legacy.voice).toEqual({
+      ...DEFAULT_SETTINGS.voice,
+      rate: 1.4,
+      volume: 0.5,
+      autoSpeak: true
+    })
+
+    const current = parseConfig({ voice: { ...DEFAULT_SETTINGS.voice, ttsProvider: 'mock' } })
+    expect(current.voice.ttsProvider).toBe('mock')
+  })
 })

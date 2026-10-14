@@ -1,9 +1,10 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron'
 import { IPC } from '../../../shared/ipc'
 import { buildPetContextMenu, type MenuActions } from '../menus'
+import type { VoiceService } from '../services/voice/voice-service'
 import type { PetWindow } from '../windows/pet-window'
 
-export function registerPetIpc(pet: PetWindow, actions: MenuActions): void {
+export function registerPetIpc(pet: PetWindow, actions: MenuActions, voice: VoiceService): void {
   const fromPet = (event: IpcMainEvent | IpcMainInvokeEvent): boolean =>
     pet.webContents !== null && event.sender === pet.webContents
 
@@ -32,5 +33,9 @@ export function registerPetIpc(pet: PetWindow, actions: MenuActions): void {
 
   ipcMain.on(IPC.petOpenPanel, (event) => {
     if (fromPet(event) && pet.settings.doubleClickAction === 'panel') actions.openPanel('/overview')
+  })
+
+  ipcMain.on(IPC.petSpeechReport, (event, id: unknown, outcome: unknown, message: unknown) => {
+    if (fromPet(event)) voice.report(id, outcome, message)
   })
 }

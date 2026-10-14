@@ -16,6 +16,8 @@ export const usePetStore = defineStore('pet', () => {
   const emotion = ref<PetEmotion>('idle')
   const isDragging = ref(false)
   const isSpeaking = ref(false)
+  /** Voice playback; the bubble stays up while it runs. */
+  const voicePlaying = ref(false)
   const isPlaying = ref(false)
   const currentGame = ref<string | null>(null)
   const pointerNear = ref(false)
@@ -28,7 +30,7 @@ export const usePetStore = defineStore('pet', () => {
     resolvePetAppearance({
       emotion: emotion.value,
       isDragging: isDragging.value,
-      isSpeaking: isSpeaking.value,
+      isSpeaking: isSpeaking.value || voicePlaying.value,
       isPlaying: isPlaying.value,
       pointerNear: pointerNear.value,
       followCursor: settings.value.followCursor,
@@ -69,6 +71,7 @@ export const usePetStore = defineStore('pet', () => {
     emotion,
     isDragging,
     isSpeaking,
+    voicePlaying,
     isPlaying,
     currentGame,
     pointerNear,

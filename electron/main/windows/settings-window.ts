@@ -4,6 +4,7 @@ import type { ChatState } from '../../../shared/chat'
 import { IPC } from '../../../shared/ipc'
 import type { AppSettings } from '../../../shared/settings'
 import { PANEL_CHROME, PANEL_TITLE_BAR_HEIGHT } from '../../../shared/theme'
+import type { VoiceState } from '../../../shared/voice'
 
 export const PANEL_ROUTES = [
   '/overview',
@@ -50,6 +51,10 @@ export class SettingsWindow {
 
   broadcastChat(state: ChatState): void {
     this.win?.webContents.send(IPC.chatChanged, state)
+  }
+
+  broadcastVoice(state: VoiceState): void {
+    this.win?.webContents.send(IPC.voiceChanged, state)
   }
 
   private create(route: PanelRoute): void {

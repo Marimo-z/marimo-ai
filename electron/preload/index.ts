@@ -17,6 +17,8 @@ const bridge: MarimoBridge = {
     endDrag: () => ipcRenderer.send(IPC.petDragEnd),
     showContextMenu: () => ipcRenderer.send(IPC.petShowContextMenu),
     openPanel: () => ipcRenderer.send(IPC.petOpenPanel),
+    reportSpeech: (id, outcome, message) =>
+      ipcRenderer.send(IPC.petSpeechReport, id, outcome, message),
     onCursor: (listener) => subscribe(IPC.petCursor, listener),
     onSettings: (listener) => subscribe(IPC.petSettingsChanged, listener),
     onCommand: (listener) => subscribe(IPC.petCommand, listener)
@@ -37,10 +39,20 @@ const bridge: MarimoBridge = {
   },
   chat: {
     getState: () => ipcRenderer.invoke(IPC.chatGetState),
-    send: (text) => ipcRenderer.invoke(IPC.chatSend, text),
+    send: (text, options) => ipcRenderer.invoke(IPC.chatSend, text, options),
     cancel: () => ipcRenderer.invoke(IPC.chatCancel),
     clear: () => ipcRenderer.invoke(IPC.chatClear),
     onChanged: (listener) => subscribe(IPC.chatChanged, listener)
+  },
+  voice: {
+    getState: () => ipcRenderer.invoke(IPC.voiceGetState),
+    onChanged: (listener) => subscribe(IPC.voiceChanged, listener),
+    testSpeak: (text) => ipcRenderer.invoke(IPC.voiceTestSpeak, text),
+    stop: () => ipcRenderer.invoke(IPC.voiceStop),
+    transcribe: (wav) => ipcRenderer.invoke(IPC.voiceTranscribe, wav),
+    getKeyStatus: () => ipcRenderer.invoke(IPC.voiceKeyStatus),
+    setKey: (kind, key) => ipcRenderer.invoke(IPC.voiceKeySet, kind, key),
+    deleteKey: (kind) => ipcRenderer.invoke(IPC.voiceKeyDelete, kind)
   }
 }
 

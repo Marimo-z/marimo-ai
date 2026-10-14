@@ -10,23 +10,21 @@ import {
   AI_PROFILE_NAME_MAX,
   AI_PROFILES_MAX,
   AI_PROVIDER_IDS,
-  ASR_PROVIDERS,
   createAIProfile,
   DEFAULT_SETTINGS,
   DIALOGUE_FREQUENCIES,
   findProviderPreset,
   GAME_DIFFICULTIES,
   LEGACY_AI_PROFILE_ID,
-  RECORD_MODES,
   REPLY_LENGTHS,
   SETTINGS_SECTIONS,
   THEME_MODES,
-  TTS_PROVIDERS,
   type AIProfile,
   type AISettings,
   type AppSettings,
   type SettingsSection
 } from '../../../shared/settings'
+import { ASR_PROVIDERS, TTS_PROVIDERS } from '../../../shared/voice'
 
 type FlatSection = Exclude<SettingsSection, 'ai'>
 
@@ -68,14 +66,18 @@ const shapes = {
     keepHistory: z.boolean()
   },
   voice: {
-    asrProvider: z.enum(ASR_PROVIDERS),
     ttsProvider: z.enum(TTS_PROVIDERS),
-    voiceId: z.string().max(100),
+    systemVoice: z.string().max(200),
+    ttsBaseUrl: z.string().trim().max(500),
+    ttsModel: z.string().trim().max(200),
+    ttsVoice: z.string().trim().max(200),
     rate: z.number().min(0.5).max(2),
     volume: z.number().min(0).max(1),
     pitch: z.number().min(0.5).max(2),
     autoSpeak: z.boolean(),
-    recordMode: z.enum(RECORD_MODES)
+    asrProvider: z.enum(ASR_PROVIDERS),
+    asrBaseUrl: z.string().trim().max(500),
+    asrModel: z.string().trim().max(200)
   },
   games: {
     dialogueEnabled: z.boolean(),
@@ -191,10 +193,28 @@ const lenientAI = z
   .optional()
   .transform(parseStoredAI) as unknown as z.ZodType<AISettings>
 
+/**
+ * Before real voice services existed only the mock providers could be chosen, so those values say
+ * nothing about the user's preference; let them take the new defaults.
+ */
+function migrateLegacyVoice(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object' || !('recordMode' in raw)) return raw
+  const rest = { ...(raw as Record<string, unknown>) }
+  delete rest.ttsProvider
+  delete rest.asrProvider
+  return rest
+}
+
+const lenientVoice = z.preprocess(migrateLegacyVoice, lenientSection('voice'))
+
+function lenientFor(section: SettingsSection): z.ZodType {
+  if (section === 'ai') return lenientAI
+  if (section === 'voice') return lenientVoice
+  return lenientSection(section)
+}
+
 const appConfigSchema = z.object({
-  ...(Object.fromEntries(
-    SETTINGS_SECTIONS.map((s) => [s, s === 'ai' ? lenientAI : lenientSection(s)])
-  ) as {
+  ...(Object.fromEntries(SETTINGS_SECTIONS.map((s) => [s, lenientFor(s)])) as {
     [K in SettingsSection]: z.ZodType<AppSettings[K]>
   }),
   petWindowPosition: z.object({ x: z.number().int(), y: z.number().int() }).nullable().catch(null)

@@ -1,6 +1,7 @@
 import type { ChatSendResult, ChatState } from './chat'
 import type { PetEmotion, PetSettings } from './pet'
 import type { AIProfile, AppSettings, SettingsSection } from './settings'
+import type { PetVoice, SpeechOutcome, VoiceKeyKind, VoiceKeyStatus, VoiceState } from './voice'
 
 export const IPC = {
   petGetSettings: 'pet:get-settings',
@@ -12,6 +13,7 @@ export const IPC = {
   petDragEnd: 'pet:drag-end',
   petShowContextMenu: 'pet:show-context-menu',
   petOpenPanel: 'pet:open-panel',
+  petSpeechReport: 'pet:speech-report',
 
   settingsGet: 'settings:get',
   settingsUpdate: 'settings:update',
@@ -27,6 +29,14 @@ export const IPC = {
   chatCancel: 'chat:cancel',
   chatClear: 'chat:clear',
   chatChanged: 'chat:changed',
+  voiceGetState: 'voice:get-state',
+  voiceChanged: 'voice:changed',
+  voiceTestSpeak: 'voice:test-speak',
+  voiceStop: 'voice:stop',
+  voiceTranscribe: 'voice:transcribe',
+  voiceKeyStatus: 'voice:key-status',
+  voiceKeySet: 'voice:key-set',
+  voiceKeyDelete: 'voice:key-delete',
   petResetPosition: 'pet:reset-position',
   petPreviewSay: 'pet:preview-say',
   appGetInfo: 'app:get-info'
@@ -39,9 +49,11 @@ export interface CursorPoint {
 }
 
 export type PetCommand =
-  | { type: 'say'; text?: string; emotion?: PetEmotion }
+  /** With `voice`, the bubble stays up until playback ends. */
+  | { type: 'say'; text?: string; emotion?: PetEmotion; voice?: PetVoice }
   /** `durationMs` 0 keeps the emotion until the next command. */
   | { type: 'emotion'; emotion: PetEmotion; durationMs?: number }
+  | { type: 'stop-speech' }
 
 /** What the pet window needs: its own settings plus the persona name for the greeting. */
 export interface PetViewSettings extends PetSettings {
@@ -97,6 +109,7 @@ export interface PetBridge {
   endDrag(): void
   showContextMenu(): void
   openPanel(): void
+  reportSpeech(id: number, outcome: SpeechOutcome, message?: string): void
   onCursor(listener: (point: CursorPoint) => void): Unsubscribe
   onSettings(listener: (settings: PetViewSettings) => void): Unsubscribe
   onCommand(listener: (command: PetCommand) => void): Unsubscribe
@@ -124,14 +137,33 @@ export interface SettingsBridge {
 export interface ChatBridge {
   getState(): Promise<ChatState>
   /** Resolves when the reply arrives, fails, or is cancelled. Only one request runs at a time. */
-  send(text: string): Promise<ChatSendResult>
+  send(text: string, options?: ChatSendOptions): Promise<ChatSendResult>
   cancel(): Promise<void>
   clear(): Promise<void>
   onChanged(listener: (state: ChatState) => void): Unsubscribe
+}
+
+export interface ChatSendOptions {
+  /** The text came from speech recognition, so the reply is read aloud. */
+  fromVoice?: boolean
+}
+
+export interface VoiceBridge {
+  getState(): Promise<VoiceState>
+  onChanged(listener: (state: VoiceState) => void): Unsubscribe
+  /** Resolves once playback has started (or failed); ignores do-not-disturb. */
+  testSpeak(text: string): Promise<Result<null>>
+  stop(): Promise<void>
+  /** `wav` must be 16-bit PCM WAV. Returns the recognized text. */
+  transcribe(wav: Uint8Array): Promise<Result<string>>
+  getKeyStatus(): Promise<VoiceKeyStatus>
+  setKey(kind: VoiceKeyKind, key: string): Promise<Result<VoiceKeyStatus>>
+  deleteKey(kind: VoiceKeyKind): Promise<VoiceKeyStatus>
 }
 
 export interface MarimoBridge {
   pet: PetBridge
   settings: SettingsBridge
   chat: ChatBridge
+  voice: VoiceBridge
 }
