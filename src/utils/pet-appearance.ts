@@ -1,6 +1,6 @@
 import type { PetEmotion, PetVisualState } from '../../shared/pet'
 
-export type PetMotion = 'float' | 'talk' | 'drag' | 'still'
+export type PetMotion = 'float' | 'talk' | 'drag' | 'play' | 'still'
 
 export interface PetAppearanceInput {
   emotion: PetEmotion
@@ -42,9 +42,11 @@ export function resolvePetAppearance(input: PetAppearanceInput): PetAppearance {
     ? 'drag'
     : input.isSpeaking
       ? 'talk'
-      : input.idleAnimation
-        ? 'float'
-        : 'still'
+      : input.isPlaying
+        ? 'play'
+        : input.idleAnimation
+          ? 'float'
+          : 'still'
 
   return {
     state,

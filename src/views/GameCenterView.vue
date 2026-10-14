@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRouter } from 'vue-router'
 import type { GameDifficulty, GameSettings } from '../../shared/settings'
 import { useSettingsStore } from '../app/stores/settings'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
+import RecordList from '../components/games/RecordList.vue'
+import { useGameRecords } from '../composables/useGameRecords'
 
+const router = useRouter()
 const store = useSettingsStore()
 const games = computed(() => store.settings.games)
 const set = (patch: Partial<GameSettings>): Promise<boolean> => store.update('games', patch)
+const { records } = useGameRecords()
+const recent = computed(() => [...records.value].reverse())
 
 const GAMES = [
   {
@@ -15,21 +21,21 @@ const GAMES = [
     name: '井字棋',
     glyph: '#',
     description: '3×3 经典对弈，三档难度，困难模式下桌宠不会输。',
-    stage: '阶段 5'
+    route: '/games/tic-tac-toe'
   },
   {
     id: 'gomoku',
     name: '五子棋',
     glyph: '●',
     description: '15×15 棋盘，启发式评分 + 搜索剪枝。',
-    stage: '阶段 5'
+    route: '/games/gomoku'
   },
   {
     id: 'tank',
     name: '坦克大战',
     glyph: '▲',
     description: '2D 俯视角射击，敌方 AI、地图障碍与碰撞。',
-    stage: '阶段 6'
+    route: null
   }
 ]
 
@@ -51,8 +57,11 @@ const TAUNT_MARKS = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
         <h3 class="game-name">{{ game.name }}</h3>
         <p class="game-desc">{{ game.description }}</p>
         <div class="game-footer">
-          <el-tag size="small" effect="plain">{{ game.stage }}</el-tag>
-          <el-button size="small" type="primary" disabled>即将推出</el-button>
+          <el-tag v-if="!game.route" size="small" effect="plain">阶段 6</el-tag>
+          <el-button v-if="game.route" size="small" type="primary" @click="router.push(game.route)">
+            开始
+          </el-button>
+          <el-button v-else size="small" type="primary" disabled>即将推出</el-button>
         </div>
       </article>
     </div>
@@ -107,7 +116,7 @@ const TAUNT_MARKS = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
     </SettingsCard>
 
     <SettingsCard title="最近战绩">
-      <el-empty description="还没有对局记录" :image-size="64" />
+      <RecordList :records="recent" empty="还没有对局记录" />
     </SettingsCard>
   </div>
 </template>

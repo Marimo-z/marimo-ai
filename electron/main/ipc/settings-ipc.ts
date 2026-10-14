@@ -13,6 +13,7 @@ import type { ChatService } from '../services/chat-service'
 import { aiProfileSchema, formatIssues } from '../services/config-schema'
 import { aiKeyName, voiceKeyName, type SecureStorage } from '../services/secure-storage'
 import { SettingsValidationError, type SettingsService } from '../services/settings-service'
+import { parsePlayingId, type GameService } from '../services/games/game-service'
 import type { LocalVoiceEngine } from '../services/local-voice/engine'
 import type { ModelStore } from '../services/local-voice/model-store'
 import type { VoiceService } from '../services/voice/voice-service'
@@ -37,6 +38,7 @@ interface Deps {
   voice: VoiceService
   models: ModelStore
   engine: LocalVoiceEngine
+  games: GameService
 }
 
 /** Trims and checks an API key; returns an error message when it is unusable. */
@@ -57,7 +59,8 @@ export function registerSettingsIpc({
   chat,
   voice,
   models,
-  engine
+  engine,
+  games
 }: Deps): void {
   /** Registers a handler that only the control panel may call. */
   const handle = <A extends unknown[], R>(
@@ -196,6 +199,15 @@ export function registerSettingsIpc({
       return { ok: false, error: `删除失败：${(error as Error).message}` }
     }
   })
+
+  handle(IPC.gameGetRecords, () => games.list())
+  handle(IPC.gameSetPlaying, (id: unknown): Result<null> => {
+    const parsed = parsePlayingId(id)
+    if (parsed === undefined) return { ok: false, error: '无效的游戏' }
+    games.setPlaying(parsed)
+    return { ok: true, data: null }
+  })
+  handle(IPC.gameReport, (event: unknown) => games.report(event))
 
   handle(IPC.petResetPosition, () => pet.resetPosition())
 

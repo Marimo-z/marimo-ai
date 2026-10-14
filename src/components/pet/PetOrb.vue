@@ -169,12 +169,25 @@ watch(
   transform: scale(0.94) rotate(-5deg);
 }
 
+.motion-play .orb-pose {
+  animation: play-sway 1.6s ease-in-out infinite alternate;
+}
+
 @keyframes talk {
   from {
     transform: scale(1, 1);
   }
   to {
     transform: scale(1.025, 0.97);
+  }
+}
+
+@keyframes play-sway {
+  from {
+    transform: rotate(-4deg) translateY(1px);
+  }
+  to {
+    transform: rotate(4deg) translateY(-2px);
   }
 }
 

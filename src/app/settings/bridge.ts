@@ -1,8 +1,10 @@
 import type { ChatMessage, ChatState } from '../../../shared/chat'
+import type { GameRecord } from '../../../shared/game'
 import type {
   AIKeyStatus,
   ChatBridge,
   ConnectionTestResult,
+  GameBridge,
   SettingsBridge,
   VoiceBridge
 } from '../../../shared/ipc'
@@ -138,6 +140,20 @@ function createBrowserPreviewVoiceBridge(): VoiceBridge {
   }
 }
 
+function createBrowserPreviewGameBridge(): GameBridge {
+  const records: GameRecord[] = []
+  const listeners = new Set<(next: GameRecord[]) => void>()
+  return {
+    getRecords: async () => records.slice(),
+    onRecordsChanged(listener) {
+      listeners.add(listener)
+      return () => listeners.delete(listener)
+    },
+    setPlaying: async () => ({ ok: true, data: null }),
+    reportEvent: async () => ({ ok: true, data: null })
+  }
+}
+
 function resolveVoiceBridge(): VoiceBridge {
   if (window.marimo?.voice) return window.marimo.voice
   if (import.meta.env.DEV) return createBrowserPreviewVoiceBridge()
@@ -156,6 +172,13 @@ function resolveChatBridge(): ChatBridge {
   throw new Error('Marimo preload bridge is unavailable')
 }
 
+function resolveGameBridge(): GameBridge {
+  if (window.marimo?.game) return window.marimo.game
+  if (import.meta.env.DEV) return createBrowserPreviewGameBridge()
+  throw new Error('Marimo preload bridge is unavailable')
+}
+
 export const settingsBridge = resolveBridge()
 export const chatBridge = resolveChatBridge()
 export const voiceBridge = resolveVoiceBridge()
+export const gameBridge = resolveGameBridge()

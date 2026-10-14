@@ -48,6 +48,8 @@ electron/
       proactive.ts           主动搭话的触发判断（纯函数）
       voice/cloud.ts         OpenAI 兼容的 /audio/speech 与 /audio/transcriptions、WAV 校验
       voice/voice-service.ts 朗读与识别的调度：打断、状态、播放回报
+      games/game-service.ts  游戏事件：桌宠台词、playing 状态、战绩
+      games/records.ts       战绩文件（最多 50 条，校验后写入）
       local-voice/catalog.ts 本地模型的仓库、文件清单与下载源
       local-voice/model-store.ts 模型下载（校验、断点续传）、导入、删除
       local-voice/engine.ts  本地推理进程的客户端：按需启动、超时、崩溃恢复、空闲释放
@@ -57,7 +59,7 @@ electron/
     pointer-tracker.ts       全局光标轮询（位置不变则不发 IPC）
     window-bounds.ts         多显示器可见性修正（纯函数）
     logo-bitmap.ts           logo 光栅化（纯函数）
-  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / settings / chat / voice
+  preload/index.ts           contextBridge 暴露受限 API：window.marimo.pet / settings / chat / voice / game
 shared/                      主进程与渲染进程共用的类型、默认值与 IPC 契约（pet / settings / theme / ipc）
 src/
   app/pet/                   桌宠窗口入口（PetApp.vue、bridge.ts、speech-player.ts 播放系统语音或音频）
@@ -66,9 +68,11 @@ src/
   app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts / voice.ts（对话与朗读状态的镜像）
   services/speech-recognition.ts 麦克风录音、转码为 WAV、识别器接口
   components/pet/            PetOrb / PetEyes / PetBubble
+  components/games/          对局外壳、战绩列表
   components/common/         SettingsCard / PageHeader / PetPreview
   composables/               光标追踪、手势、眨眼、交互区域、待机浮动、表单草稿、主题
-  views/                     控制面板的 7 个页面
+  views/                     控制面板页面（含井字棋 / 五子棋对局页）
+  games/                     棋类规则与 AI（井字棋 Minimax、五子棋启发式）
   services/mock-dialogue.ts  本地模拟台词
   styles/panel.css           面板主题变量（浅色 / 深色）
   utils/                     纯函数：眼睛偏移、外观解析、手势判定、气泡时长、浮动曲线、纯数据克隆
@@ -156,6 +160,14 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 - **下载**（`ModelStore`）：根据 Hugging Face 的文件列表 API（`/api/models/{repo}/tree/main?recursive=true`，跟随 `Link: rel="next"` 分页）逐个下载 `/{repo}/resolve/main/{path}`，而不是 sherpa-onnx 在 GitHub Releases 上的 tar.bz2：国内访问 GitHub 下载极慢，且逐文件下载可以只取需要的文件、按 LFS 的 SHA-256 校验、用 `Range` 断点续传。文件列表经 zod 校验，任何路径含 `..`、绝对路径或反斜杠都会让整次下载失败。文件先写入 `models/<id>.download/*.part`，大小与校验和都正确后才移入 `models/<id>`；并发 4 个文件，每个文件重试 3 次；暂停会保留已下载部分。下载源可选 hf-mirror.com（默认）或 huggingface.co。
 - **导入**：主进程弹出系统目录选择框（渲染进程不能传入任意路径），接受模型文件夹本身或它的上一级（解压后的压缩包），检查必需文件后复制到 `models/<id>`。
 - **打包**（阶段 6）：原生模块不能放在 asar 中，需要 `asarUnpack` `sherpa-onnx-node` 和 `sherpa-onnx-win-x64`。
+
+### 小游戏（阶段 5）
+
+- **接口**：`GameAdapter`（`initialize / start / pause / resume / restart / destroy / setDifficulty / onEvent`）。棋盘在控制面板用 Vue 渲染，适配器只负责规则、AI 和事件，不碰 Phaser（留给阶段 6 坦克大战）。
+- **井字棋**：简单随机合法落子；普通先取胜再阻挡，再走中心/角；困难 Minimax，对随机对手不败。
+- **五子棋**：15×15 五连，无禁手。简单在高分候选中随机；普通攻守评分；困难在邻域候选上做 2 步搜索。算法可单测。
+- **事件**：视图把 `game_started` 等事件发给主进程 `GameService`（zod 校验）。开局把桌宠设为 `playing`；结束写入 `%APPDATA%\marimo\game-records.json`。中途离开不记战绩。
+- **对话**：本地台词模板，按嘲讽强度分 4 档；开始/胜负/平局必说，其余按对话频率节流。不请求大模型，不阻塞落子。开启自动朗读时才异步走 TTS。对局中主动搭话被当作 busy。
 
 ## 关键实现
 

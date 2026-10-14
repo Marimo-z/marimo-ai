@@ -12,7 +12,9 @@ import {
 import AISettingsView from '../../views/AISettingsView.vue'
 import ChatView from '../../views/ChatView.vue'
 import GameCenterView from '../../views/GameCenterView.vue'
+import GomokuView from '../../views/GomokuView.vue'
 import OverviewView from '../../views/OverviewView.vue'
+import TicTacToeView from '../../views/TicTacToeView.vue'
 import PersonaView from '../../views/PersonaView.vue'
 import PetSettingsView from '../../views/PetSettingsView.vue'
 import VoiceSettingsView from '../../views/VoiceSettingsView.vue'
@@ -52,6 +54,8 @@ export const router = createRouter({
       component: views[item.path],
       meta: { title: item.title }
     })),
+    { path: '/games/tic-tac-toe', component: TicTacToeView, meta: { title: '井字棋' } },
+    { path: '/games/gomoku', component: GomokuView, meta: { title: '五子棋' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' }
   ]
 })

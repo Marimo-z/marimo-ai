@@ -13,6 +13,8 @@ import { ModelStore } from './services/local-voice/model-store'
 import { restrictPermissions } from './permissions'
 import { aiKeyName, SecureStorage, voiceKeyName } from './services/secure-storage'
 import { SettingsService } from './services/settings-service'
+import { GameService } from './services/games/game-service'
+import { GameRecordStore } from './services/games/records'
 import { VoiceService } from './services/voice/voice-service'
 import { createTray } from './tray'
 import { PetWindow } from './windows/pet-window'
@@ -70,13 +72,21 @@ if (!app.requestSingleInstanceLock()) {
       onPet: (command) => pet.sendCommand(command),
       presentReply: (reply, readAloud) => void voice.present(reply.text, reply.emotion, readAloud)
     })
+    const games = new GameService(new GameRecordStore(join(userData, 'game-records.json')), {
+      getSettings: () => settings.get(),
+      onPet: (command) => pet.sendCommand(command),
+      present: (text, emotion, speak) => {
+        void voice.present(text, emotion, speak)
+      },
+      onRecords: (records) => panel.broadcastRecords(records)
+    })
     proactiveTimer = setInterval(() => {
       const context = {
         now: Date.now(),
         lastActivity: chat.lastActivity,
         settings: settings.get(),
         petVisible: pet.visible,
-        busy: chat.busy
+        busy: chat.busy || games.playing !== null
       }
       if (shouldSpeakProactively(context)) {
         void chat.speakProactively().then((result) => {
@@ -109,7 +119,7 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     registerPetIpc(pet, actions, voice)
-    registerSettingsIpc({ settings, secrets, pet, panel, chat, voice, models, engine })
+    registerSettingsIpc({ settings, secrets, pet, panel, chat, voice, models, engine, games })
     pet.create()
     tray = createTray(pet, actions)
 
@@ -120,6 +130,7 @@ if (!app.requestSingleInstanceLock()) {
     app.on('before-quit', () => {
       if (proactiveTimer) clearInterval(proactiveTimer)
       chat.cancel()
+      games.setPlaying(null)
       voice.dispose()
       models.cancelAll()
       engine.stop()

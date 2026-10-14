@@ -1,6 +1,7 @@
 import { app, BrowserWindow, nativeTheme } from 'electron'
 import { join } from 'node:path'
 import type { ChatState } from '../../../shared/chat'
+import type { GameRecord } from '../../../shared/game'
 import { IPC } from '../../../shared/ipc'
 import type { AppSettings } from '../../../shared/settings'
 import { PANEL_CHROME, PANEL_TITLE_BAR_HEIGHT } from '../../../shared/theme'
@@ -59,6 +60,10 @@ export class SettingsWindow {
 
   broadcastModels(statuses: LocalModelStatus[]): void {
     this.win?.webContents.send(IPC.voiceModelsChanged, statuses)
+  }
+
+  broadcastRecords(records: GameRecord[]): void {
+    this.win?.webContents.send(IPC.gameRecordsChanged, records)
   }
 
   get window(): BrowserWindow | null {

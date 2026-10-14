@@ -59,6 +59,12 @@ const bridge: MarimoBridge = {
     cancelDownload: (id) => ipcRenderer.invoke(IPC.voiceModelCancel, id),
     importModel: (id) => ipcRenderer.invoke(IPC.voiceModelImport, id),
     deleteModel: (id) => ipcRenderer.invoke(IPC.voiceModelDelete, id)
+  },
+  game: {
+    getRecords: () => ipcRenderer.invoke(IPC.gameGetRecords),
+    onRecordsChanged: (listener) => subscribe(IPC.gameRecordsChanged, listener),
+    setPlaying: (gameId) => ipcRenderer.invoke(IPC.gameSetPlaying, gameId),
+    reportEvent: (event) => ipcRenderer.invoke(IPC.gameReport, event)
   }
 }
 

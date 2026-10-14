@@ -63,7 +63,10 @@ function closeBubble(): void {
 
 const gestures = usePetGestures(petBridge, {
   onPress: () => pressTick.value++,
-  onTap: () => speak(pickLine(TAP_LINES, lastLine)),
+  onTap: () => {
+    if (store.isPlaying) return
+    speak(pickLine(TAP_LINES, lastLine))
+  },
   onDoubleTap: () => {
     if (settings.value.doubleClickAction === 'panel') {
       store.setEmotion('happy', 1200)
@@ -92,6 +95,9 @@ function handleCommand(command: PetCommand): void {
     }
   } else if (command?.type === 'stop-speech') {
     stopVoice()
+  } else if (command?.type === 'play') {
+    store.isPlaying = command.playing === true
+    store.currentGame = command.playing ? (command.game ?? null) : null
   }
 }
 

@@ -46,7 +46,10 @@ onBeforeUnmount(offNavigate)
           :key="item.path"
           :to="item.path"
           class="nav-item"
-          :class="{ active: route.path === item.path }"
+          :class="{
+            active:
+              item.path === '/games' ? route.path.startsWith('/games') : route.path === item.path
+          }"
         >
           <el-icon :size="18"><component :is="item.icon" /></el-icon>
           <span>{{ item.title }}</span>

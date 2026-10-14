@@ -11,7 +11,9 @@ import { useSettingsStore } from '../app/stores/settings'
 import { useVoiceStore } from '../app/stores/voice'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
+import RecordList from '../components/games/RecordList.vue'
 import PetPreview from '../components/pet/PetPreview.vue'
+import { useGameRecords } from '../composables/useGameRecords'
 
 const store = useSettingsStore()
 const voice = useVoiceStore()
@@ -69,6 +71,8 @@ async function resetAll(): Promise<void> {
 
 const chat = useChatStore()
 const recent = computed(() => chat.messages.slice(-4))
+const { records: gameRecords } = useGameRecords()
+const recentGames = computed(() => [...gameRecords.value].reverse().slice(0, 5))
 
 onMounted(async () => {
   void chat.load()
@@ -164,7 +168,10 @@ onMounted(async () => {
         <el-empty v-else description="还没有聊天记录" :image-size="64" />
       </SettingsCard>
       <SettingsCard title="最近战绩">
-        <el-empty description="小游戏上线后会显示在这里" :image-size="64" />
+        <template #extra>
+          <el-button link type="primary" @click="router.push('/games')">全部</el-button>
+        </template>
+        <RecordList :records="recentGames" empty="还没有对局记录" />
       </SettingsCard>
     </div>
 

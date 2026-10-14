@@ -1,4 +1,5 @@
 import type { ChatSendResult, ChatState } from './chat'
+import type { GameEvent, GameRecord, PlayableGameId } from './game'
 import type { PetEmotion, PetSettings } from './pet'
 import type { AIProfile, AppSettings, SettingsSection } from './settings'
 import type {
@@ -53,7 +54,11 @@ export const IPC = {
   voiceModelDelete: 'voice:model-delete',
   petResetPosition: 'pet:reset-position',
   petPreviewSay: 'pet:preview-say',
-  appGetInfo: 'app:get-info'
+  appGetInfo: 'app:get-info',
+  gameGetRecords: 'game:records',
+  gameRecordsChanged: 'game:records-changed',
+  gameSetPlaying: 'game:set-playing',
+  gameReport: 'game:report'
 } as const
 
 /** Cursor position relative to the pet window's top-left corner, in DIP. */
@@ -68,6 +73,7 @@ export type PetCommand =
   /** `durationMs` 0 keeps the emotion until the next command. */
   | { type: 'emotion'; emotion: PetEmotion; durationMs?: number }
   | { type: 'stop-speech' }
+  | { type: 'play'; playing: boolean; game?: PlayableGameId }
 
 /** What the pet window needs: its own settings plus the persona name for the greeting. */
 export interface PetViewSettings extends PetSettings {
@@ -183,9 +189,17 @@ export interface VoiceBridge {
   deleteModel(id: LocalModelId): Promise<Result<null>>
 }
 
+export interface GameBridge {
+  getRecords(): Promise<GameRecord[]>
+  onRecordsChanged(listener: (records: GameRecord[]) => void): Unsubscribe
+  setPlaying(gameId: PlayableGameId | null): Promise<Result<null>>
+  reportEvent(event: GameEvent): Promise<Result<null>>
+}
+
 export interface MarimoBridge {
   pet: PetBridge
   settings: SettingsBridge
   chat: ChatBridge
   voice: VoiceBridge
+  game: GameBridge
 }

@@ -57,7 +57,10 @@ describe('resolvePetAppearance', () => {
   })
 
   it('reports playing', () => {
-    expect(resolvePetAppearance({ ...base, isPlaying: true }).state).toBe('playing')
+    expect(resolvePetAppearance({ ...base, isPlaying: true })).toMatchObject({
+      state: 'playing',
+      motion: 'play'
+    })
   })
 
   it.each(['happy', 'sad', 'thinking'] as const)('disables tracking for %s', (emotion) => {
