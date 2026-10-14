@@ -1,5 +1,5 @@
-import type { CursorPoint, PetBridge, PetCommand } from '../../../shared/ipc'
-import { DEFAULT_PET_SETTINGS, type PetSettings } from '../../../shared/pet'
+import type { CursorPoint, PetBridge, PetCommand, PetViewSettings } from '../../../shared/ipc'
+import { DEFAULT_PET_SETTINGS } from '../../../shared/pet'
 
 /**
  * Stand-in used only when the page is opened in a normal browser during development
@@ -8,8 +8,12 @@ import { DEFAULT_PET_SETTINGS, type PetSettings } from '../../../shared/pet'
 function createBrowserPreviewBridge(): PetBridge {
   const noop = (): void => {}
   return {
-    getSettings: async (): Promise<PetSettings> => ({ ...DEFAULT_PET_SETTINGS }),
+    getSettings: async (): Promise<PetViewSettings> => ({
+      ...DEFAULT_PET_SETTINGS,
+      petName: 'Marimo'
+    }),
     setInteractive: noop,
+    openPanel: () => console.info('[preview] the control panel opens in Electron'),
     startDrag: noop,
     endDrag: noop,
     showContextMenu: () => console.info('[preview] context menu is native in Electron'),

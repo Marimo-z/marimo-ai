@@ -8,6 +8,7 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): Unsubscr
   return () => ipcRenderer.removeListener(channel, handler)
 }
 
+// Both windows share this preload; the main process checks which window may call each channel.
 const bridge: MarimoBridge = {
   pet: {
     getSettings: () => ipcRenderer.invoke(IPC.petGetSettings),
@@ -15,9 +16,24 @@ const bridge: MarimoBridge = {
     startDrag: () => ipcRenderer.send(IPC.petDragStart),
     endDrag: () => ipcRenderer.send(IPC.petDragEnd),
     showContextMenu: () => ipcRenderer.send(IPC.petShowContextMenu),
+    openPanel: () => ipcRenderer.send(IPC.petOpenPanel),
     onCursor: (listener) => subscribe(IPC.petCursor, listener),
     onSettings: (listener) => subscribe(IPC.petSettingsChanged, listener),
     onCommand: (listener) => subscribe(IPC.petCommand, listener)
+  },
+  settings: {
+    get: () => ipcRenderer.invoke(IPC.settingsGet),
+    update: (section, patch) => ipcRenderer.invoke(IPC.settingsUpdate, section, patch),
+    reset: (section) => ipcRenderer.invoke(IPC.settingsReset, section),
+    onChanged: (listener) => subscribe(IPC.settingsChanged, listener),
+    onNavigate: (listener) => subscribe(IPC.panelNavigate, listener),
+    getAIKeyStatus: () => ipcRenderer.invoke(IPC.secretsAIStatus),
+    setAIKey: (key) => ipcRenderer.invoke(IPC.secretsAISet, key),
+    deleteAIKey: () => ipcRenderer.invoke(IPC.secretsAIDelete),
+    testAIConnection: (draft) => ipcRenderer.invoke(IPC.aiTestConnection, draft),
+    resetPetPosition: () => ipcRenderer.invoke(IPC.petResetPosition),
+    previewSay: (text, emotion) => ipcRenderer.invoke(IPC.petPreviewSay, text, emotion),
+    getAppInfo: () => ipcRenderer.invoke(IPC.appGetInfo)
   }
 }
 

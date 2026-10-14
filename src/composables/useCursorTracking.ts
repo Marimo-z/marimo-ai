@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, type ComputedRef, type Ref } from 'vue'
 import type { PetBridge } from '../../shared/ipc'
+import { SENSITIVITY_NEAR_FACTOR } from '../../shared/pet'
 import { usePetStore } from '../app/stores/pet'
 import { computeEyeOffset, DEFAULT_EYE_TRACKING, type Vec2 } from '../utils/eye-tracking'
 
@@ -23,7 +24,10 @@ export function useCursorTracking(
         ...DEFAULT_EYE_TRACKING,
         maxOffset: DEFAULT_EYE_TRACKING.maxOffset * scale,
         orbRadius: rect.width / 2,
-        nearRadius: DEFAULT_EYE_TRACKING.nearRadius * scale
+        nearRadius:
+          DEFAULT_EYE_TRACKING.nearRadius *
+          scale *
+          SENSITIVITY_NEAR_FACTOR[store.settings.sensitivity]
       }
     )
     // Quantise so tiny cursor moves far away do not trigger a repaint of the eyes.

@@ -10,8 +10,7 @@ import { useCursorTracking } from '../../composables/useCursorTracking'
 import { useInteractiveRegions } from '../../composables/useInteractiveRegions'
 import { usePetGestures } from '../../composables/usePetGestures'
 import {
-  GREETING,
-  PANEL_NOT_READY,
+  greeting,
   pickLine,
   RANDOM_LINES,
   TAP_LINES,
@@ -42,7 +41,14 @@ function speak(line: MockLine): void {
 const gestures = usePetGestures(petBridge, {
   onPress: () => pressTick.value++,
   onTap: () => speak(pickLine(TAP_LINES, lastLine)),
-  onDoubleTap: () => speak(PANEL_NOT_READY),
+  onDoubleTap: () => {
+    if (settings.value.doubleClickAction === 'panel') {
+      store.setEmotion('happy', 1200)
+      petBridge.openPanel()
+    } else {
+      speak(pickLine(TAP_LINES, lastLine))
+    }
+  },
   onDragChange: (dragging) => (store.isDragging = dragging)
 })
 
@@ -50,8 +56,11 @@ function handleCommand(command: PetCommand): void {
   if (command?.type === 'emotion' && isPetEmotion(command.emotion)) {
     store.setEmotion(command.emotion, 4000)
   } else if (command?.type === 'say') {
-    if (typeof command.text === 'string' && command.text.trim()) store.say(command.text)
-    else speak(pickLine(RANDOM_LINES, lastLine))
+    if (typeof command.text === 'string' && command.text.trim()) {
+      store.say(command.text, isPetEmotion(command.emotion) ? command.emotion : undefined)
+    } else {
+      speak(pickLine(RANDOM_LINES, lastLine))
+    }
   }
 }
 
@@ -63,7 +72,9 @@ let greetingTimer: ReturnType<typeof setTimeout> | undefined
 
 onMounted(async () => {
   store.applySettings(await petBridge.getSettings())
-  greetingTimer = setTimeout(() => speak(GREETING), 600)
+  if (!settings.value.doNotDisturb) {
+    greetingTimer = setTimeout(() => speak(greeting(settings.value.petName)), 600)
+  }
 })
 
 onBeforeUnmount(() => {

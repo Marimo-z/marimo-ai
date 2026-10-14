@@ -1,0 +1,163 @@
+import { DEFAULT_PET_SETTINGS, type PetSettings } from './pet'
+
+export interface AIProviderPreset {
+  id: string
+  name: string
+  baseUrl: string
+  model: string
+  /** Local services (e.g. Ollama) usually work without an API key. */
+  keyOptional?: boolean
+}
+
+/** OpenAI-compatible endpoints. Model defaults are only suggestions and can be edited. */
+export const AI_PROVIDER_PRESETS = [
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  {
+    id: 'qwen',
+    name: '通义千问（阿里云百炼）',
+    baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    model: 'qwen-plus'
+  },
+  { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: '' },
+  {
+    id: 'ollama',
+    name: 'Ollama（本地）',
+    baseUrl: 'http://localhost:11434/v1',
+    model: '',
+    keyOptional: true
+  },
+  { id: 'custom', name: '自定义（OpenAI 兼容）', baseUrl: '', model: '' }
+] as const satisfies readonly AIProviderPreset[]
+
+export type AIProviderId = (typeof AI_PROVIDER_PRESETS)[number]['id']
+export const AI_PROVIDER_IDS = AI_PROVIDER_PRESETS.map((p) => p.id) as [
+  AIProviderId,
+  ...AIProviderId[]
+]
+
+export function findProviderPreset(id: string): AIProviderPreset | undefined {
+  return AI_PROVIDER_PRESETS.find((p) => p.id === id)
+}
+
+export interface AISettings {
+  providerId: AIProviderId
+  baseUrl: string
+  model: string
+  timeoutMs: number
+  temperature: number
+  maxTokens: number
+}
+
+export const REPLY_LENGTHS = ['short', 'medium', 'long'] as const
+export type ReplyLength = (typeof REPLY_LENGTHS)[number]
+
+export interface PersonaSettings {
+  name: string
+  traits: string[]
+  backstory: string
+  speakingStyle: string
+  catchphrase: string
+  replyLength: ReplyLength
+  proactive: boolean
+  proactiveIntervalMin: number
+  keepHistory: boolean
+}
+
+export const ASR_PROVIDERS = ['mock'] as const
+export const TTS_PROVIDERS = ['mock'] as const
+export const RECORD_MODES = ['hold', 'toggle'] as const
+
+export interface VoiceSettings {
+  asrProvider: (typeof ASR_PROVIDERS)[number]
+  ttsProvider: (typeof TTS_PROVIDERS)[number]
+  voiceId: string
+  rate: number
+  volume: number
+  pitch: number
+  autoSpeak: boolean
+  recordMode: (typeof RECORD_MODES)[number]
+}
+
+export const GAME_DIFFICULTIES = ['easy', 'normal', 'hard'] as const
+export type GameDifficulty = (typeof GAME_DIFFICULTIES)[number]
+export const DIALOGUE_FREQUENCIES = ['low', 'normal', 'high'] as const
+
+export interface GameSettings {
+  dialogueEnabled: boolean
+  dialogueFrequency: (typeof DIALOGUE_FREQUENCIES)[number]
+  /** 0 = gentle only, 3 = maximum teasing. */
+  tauntLevel: number
+  defaultDifficulty: GameDifficulty
+}
+
+export const THEME_MODES = ['system', 'light', 'dark'] as const
+export type ThemeMode = (typeof THEME_MODES)[number]
+
+export interface AppearanceSettings {
+  theme: ThemeMode
+}
+
+export interface AppSettings {
+  pet: PetSettings
+  ai: AISettings
+  persona: PersonaSettings
+  voice: VoiceSettings
+  games: GameSettings
+  appearance: AppearanceSettings
+}
+
+export type SettingsSection = keyof AppSettings
+export const SETTINGS_SECTIONS = [
+  'pet',
+  'ai',
+  'persona',
+  'voice',
+  'games',
+  'appearance'
+] as const satisfies readonly SettingsSection[]
+
+export function isSettingsSection(value: unknown): value is SettingsSection {
+  return typeof value === 'string' && (SETTINGS_SECTIONS as readonly string[]).includes(value)
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  pet: DEFAULT_PET_SETTINGS,
+  ai: {
+    providerId: 'deepseek',
+    baseUrl: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+    timeoutMs: 30000,
+    temperature: 0.8,
+    maxTokens: 512
+  },
+  persona: {
+    name: 'Marimo',
+    traits: ['好奇', '温柔', '有点小傲娇'],
+    backstory: '一颗住在桌面上的蓝色小机器人，喜欢看主人工作，也喜欢下棋。',
+    speakingStyle: '口语化、简短，偶尔用语气词',
+    catchphrase: '嘿嘿～',
+    replyLength: 'short',
+    proactive: false,
+    proactiveIntervalMin: 30,
+    keepHistory: true
+  },
+  voice: {
+    asrProvider: 'mock',
+    ttsProvider: 'mock',
+    voiceId: 'mock-default',
+    rate: 1,
+    volume: 0.8,
+    pitch: 1,
+    autoSpeak: false,
+    recordMode: 'hold'
+  },
+  games: {
+    dialogueEnabled: true,
+    dialogueFrequency: 'normal',
+    tauntLevel: 1,
+    defaultDifficulty: 'normal'
+  },
+  appearance: {
+    theme: 'system'
+  }
+}

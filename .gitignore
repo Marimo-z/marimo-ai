@@ -6,6 +6,7 @@ release/
 .env
 .env.*
 !.env.example
+secrets.json
 .DS_Store
 Thumbs.db
 .vscode/*

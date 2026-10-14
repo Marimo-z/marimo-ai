@@ -6,9 +6,8 @@ export interface MockLine {
 }
 
 /** Local placeholder lines until the AI service is connected. */
-export const GREETING: MockLine = {
-  text: '嗨，我是 Marimo！右键我可以看看菜单哦～',
-  emotion: 'happy'
+export function greeting(name: string): MockLine {
+  return { text: `嗨，我是 ${name}！双击我打开控制面板，右键看看菜单哦～`, emotion: 'happy' }
 }
 
 export const TAP_LINES: readonly MockLine[] = [
@@ -31,11 +30,6 @@ export const RANDOM_LINES: readonly MockLine[] = [
     emotion: 'happy'
   }
 ]
-
-export const PANEL_NOT_READY: MockLine = {
-  text: '控制面板还在建造中，下个阶段就能打开啦～',
-  emotion: 'thinking'
-}
 
 export function pickLine(lines: readonly MockLine[], previous?: MockLine): MockLine {
   if (lines.length === 1) return lines[0]

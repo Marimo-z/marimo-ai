@@ -9,7 +9,7 @@ export function registerPetIpc(pet: PetWindow, actions: MenuActions): void {
 
   ipcMain.handle(IPC.petGetSettings, (event) => {
     if (!fromPet(event)) throw new Error('Forbidden')
-    return pet.settings
+    return pet.viewSettings
   })
 
   ipcMain.on(IPC.petSetInteractive, (event, interactive: unknown) => {
@@ -28,5 +28,9 @@ export function registerPetIpc(pet: PetWindow, actions: MenuActions): void {
     if (!fromPet(event)) return
     const window = BrowserWindow.fromWebContents(event.sender)
     if (window) buildPetContextMenu(pet, actions).popup({ window })
+  })
+
+  ipcMain.on(IPC.petOpenPanel, (event) => {
+    if (fromPet(event) && pet.settings.doubleClickAction === 'panel') actions.openPanel('/overview')
   })
 }

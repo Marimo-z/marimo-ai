@@ -1,0 +1,118 @@
+/*
+ * Control panel themes. `html.dark` is toggled from prefers-color-scheme, which follows
+ * Electron's nativeTheme.themeSource (system / light / dark).
+ * Window chrome colours must stay in sync with shared/theme.ts.
+ */
+:root {
+  color-scheme: light;
+  --mo-bg: #f4f6fb;
+  --mo-bg-header: #ffffff;
+  --mo-bg-sidebar: #ffffff;
+  --mo-bg-card: #ffffff;
+  --mo-bg-soft: #eef1f8;
+  --mo-border: #e3e7f1;
+  --mo-text: #24304f;
+  --mo-text-secondary: #6b7591;
+  --mo-accent: #4f68b0;
+  --mo-accent-soft: rgba(79, 104, 176, 0.1);
+  --mo-shadow: 0 1px 2px rgba(36, 48, 79, 0.04), 0 4px 16px rgba(36, 48, 79, 0.06);
+  --mo-radius: 12px;
+
+  --el-color-primary: #4f68b0;
+  --el-color-primary-light-3: #8495c8;
+  --el-color-primary-light-5: #a7b4d8;
+  --el-color-primary-light-7: #cad2e7;
+  --el-color-primary-light-8: #dce1ef;
+  --el-color-primary-light-9: #edf0f7;
+  --el-color-primary-dark-2: #3f538d;
+  --el-border-radius-base: 8px;
+}
+
+html.dark {
+  color-scheme: dark;
+  --mo-bg: #101217;
+  --mo-bg-header: #171a21;
+  --mo-bg-sidebar: #171a21;
+  --mo-bg-card: #1b1f27;
+  --mo-bg-soft: #222733;
+  --mo-border: #2a2f3a;
+  --mo-text: #e4e7ef;
+  --mo-text-secondary: #9aa3b8;
+  --mo-accent: #7d93e0;
+  --mo-accent-soft: rgba(125, 147, 224, 0.14);
+  --mo-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
+
+  --el-color-primary: #7d93e0;
+  --el-color-primary-light-3: #5e6fa7;
+  --el-color-primary-light-5: #4a5781;
+  --el-color-primary-light-7: #363e5a;
+  --el-color-primary-light-8: #2b3247;
+  --el-color-primary-light-9: #212634;
+  --el-color-primary-dark-2: #97a9e6;
+  --el-bg-color: #1b1f27;
+  --el-bg-color-overlay: #1f232c;
+  --el-bg-color-page: #101217;
+  --el-fill-color-blank: #1b1f27;
+  --el-border-color: #333a47;
+  --el-border-color-light: #2a2f3a;
+  --el-border-color-lighter: #262b35;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--mo-bg);
+  color: var(--mo-text);
+  font-family: 'Microsoft YaHei UI', 'Segoe UI', 'PingFang SC', sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 28px 36px;
+}
+
+.page .el-form-item:last-child {
+  margin-bottom: 0;
+}
+
+.hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--mo-text-secondary);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mo-border) transparent;
+}

@@ -21,7 +21,7 @@ export default defineConfig({
     root: '.',
     build: {
       rollupOptions: {
-        input: { pet: resolve('pet.html') }
+        input: { pet: resolve('pet.html'), settings: resolve('settings.html') }
       }
     },
     plugins: [vue()]

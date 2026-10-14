@@ -1,9 +1,11 @@
 import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
-import { IPC, type PetCommand } from '../../../shared/ipc'
+import { IPC, type PetCommand, type PetViewSettings } from '../../../shared/ipc'
 import { petWindowSize, type PetSettings } from '../../../shared/pet'
+import type { AppSettings } from '../../../shared/settings'
 import type { ConfigStore } from '../services/config-store'
 import { PointerTracker } from '../services/pointer-tracker'
+import type { SettingsService } from '../services/settings-service'
 import { defaultPosition, ensureVisible, type Point, type Rect } from '../services/window-bounds'
 
 const CURSOR_POLL_MS = 33
@@ -24,10 +26,20 @@ export class PetWindow {
   private readonly tracker = new PointerTracker(CURSOR_POLL_MS, (p) => this.sendCursor(p))
   private readonly changeListeners = new Set<() => void>()
 
-  constructor(private readonly store: ConfigStore) {}
+  constructor(
+    private readonly store: ConfigStore,
+    private readonly settingsService: SettingsService
+  ) {
+    settingsService.onChange((next, previous) => this.applySettings(next, previous))
+  }
 
   get settings(): PetSettings {
     return this.store.get().pet
+  }
+
+  get viewSettings(): PetViewSettings {
+    const config = this.store.get()
+    return { ...config.pet, petName: config.persona.name }
   }
 
   get webContents(): Electron.WebContents | null {
@@ -131,9 +143,23 @@ export class PetWindow {
   }
 
   updateSettings(patch: Partial<PetSettings>): void {
-    const previous = this.settings
-    this.store.update((config) => ({ ...config, pet: { ...config.pet, ...patch } }))
-    const next = this.settings
+    this.settingsService.update('pet', patch)
+  }
+
+  /** Moves the pet back to the default corner of the primary display. */
+  resetPosition(): void {
+    const win = this.win
+    if (!win) return
+    const size = petWindowSize(this.settings.scale)
+    win.setBounds({ ...defaultPosition(workAreas()[0], size), ...size })
+    this.savePosition()
+    this.tracker.invalidate()
+    this.show()
+  }
+
+  private applySettings(nextAll: AppSettings, previousAll: AppSettings): void {
+    const next = nextAll.pet
+    const previous = previousAll.pet
     const win = this.win
 
     if (win) {
@@ -143,7 +169,7 @@ export class PetWindow {
         this.interactive = false
         this.applyMouseMode()
       }
-      win.webContents.send(IPC.petSettingsChanged, next)
+      win.webContents.send(IPC.petSettingsChanged, this.viewSettings)
     }
     this.syncTracker()
     this.emitChange()

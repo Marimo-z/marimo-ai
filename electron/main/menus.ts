@@ -1,9 +1,11 @@
 import { Menu, type MenuItemConstructorOptions } from 'electron'
 import { PET_EMOTIONS, PET_EMOTION_LABELS } from '../../shared/pet'
+import type { PanelRoute } from './windows/settings-window'
 import type { PetWindow } from './windows/pet-window'
 
 export interface MenuActions {
   quit(): void
+  openPanel(route?: PanelRoute): void
 }
 
 function comingSoon(label: string): MenuItemConstructorOptions {
@@ -32,6 +34,12 @@ function settingToggles(pet: PetWindow): MenuItemConstructorOptions[] {
       click: () => pet.updateSettings({ idleAnimation: !s.idleAnimation })
     },
     {
+      label: '勿扰模式',
+      type: 'checkbox',
+      checked: s.doNotDisturb,
+      click: () => pet.updateSettings({ doNotDisturb: !s.doNotDisturb })
+    },
+    {
       label: '鼠标穿透（不打扰模式）',
       type: 'checkbox',
       checked: s.clickThrough,
@@ -43,8 +51,8 @@ function settingToggles(pet: PetWindow): MenuItemConstructorOptions[] {
 export function buildTrayMenu(pet: PetWindow, actions: MenuActions): Menu {
   return Menu.buildFromTemplate([
     { label: pet.visible ? '隐藏桌宠' : '显示桌宠', click: () => pet.toggle() },
-    comingSoon('打开控制面板'),
-    comingSoon('设置'),
+    { label: '打开控制面板', click: () => actions.openPanel('/overview') },
+    { label: '设置', click: () => actions.openPanel('/pet') },
     { type: 'separator' },
     ...settingToggles(pet),
     { type: 'separator' },
@@ -55,8 +63,8 @@ export function buildTrayMenu(pet: PetWindow, actions: MenuActions): Menu {
 export function buildPetContextMenu(pet: PetWindow, actions: MenuActions): Menu {
   return Menu.buildFromTemplate([
     comingSoon('聊天'),
-    comingSoon('小游戏'),
-    comingSoon('设置'),
+    { label: '小游戏', click: () => actions.openPanel('/games') },
+    { label: '设置', click: () => actions.openPanel('/pet') },
     { type: 'separator' },
     { label: '说句话', click: () => pet.sendCommand({ type: 'say' }) },
     {

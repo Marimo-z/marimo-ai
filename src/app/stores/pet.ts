@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { DEFAULT_PET_SETTINGS, type PetEmotion, type PetSettings } from '../../../shared/pet'
+import type { PetViewSettings } from '../../../shared/ipc'
+import { DEFAULT_PET_SETTINGS, type PetEmotion } from '../../../shared/pet'
 import { resolvePetAppearance } from '../../utils/pet-appearance'
 
 export interface Dialogue {
@@ -11,7 +12,7 @@ export interface Dialogue {
 const DEFAULT_EMOTION_MS = 2500
 
 export const usePetStore = defineStore('pet', () => {
-  const settings = ref<PetSettings>({ ...DEFAULT_PET_SETTINGS })
+  const settings = ref<PetViewSettings>({ ...DEFAULT_PET_SETTINGS, petName: 'Marimo' })
   const emotion = ref<PetEmotion>('idle')
   const isDragging = ref(false)
   const isSpeaking = ref(false)
@@ -35,7 +36,7 @@ export const usePetStore = defineStore('pet', () => {
     })
   )
 
-  function applySettings(next: PetSettings): void {
+  function applySettings(next: PetViewSettings): void {
     settings.value = { ...next }
     if (!next.followCursor) pointerNear.value = false
   }

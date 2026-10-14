@@ -21,6 +21,19 @@ export function isPetEmotion(value: unknown): value is PetEmotion {
   return typeof value === 'string' && (PET_EMOTIONS as readonly string[]).includes(value)
 }
 
+export const PET_SENSITIVITIES = ['low', 'normal', 'high'] as const
+export type PetSensitivity = (typeof PET_SENSITIVITIES)[number]
+
+/** Multiplier for the distance at which the pet notices the cursor. */
+export const SENSITIVITY_NEAR_FACTOR: Record<PetSensitivity, number> = {
+  low: 0.6,
+  normal: 1,
+  high: 1.6
+}
+
+export const DOUBLE_CLICK_ACTIONS = ['panel', 'none'] as const
+export type DoubleClickAction = (typeof DOUBLE_CLICK_ACTIONS)[number]
+
 export interface PetSettings {
   alwaysOnTop: boolean
   followCursor: boolean
@@ -28,6 +41,11 @@ export interface PetSettings {
   clickThrough: boolean
   scale: number
   bubbleDurationMs: number
+  launchAtLogin: boolean
+  /** Suppresses unsolicited bubbles (greeting, future proactive chat) and voice. */
+  doNotDisturb: boolean
+  sensitivity: PetSensitivity
+  doubleClickAction: DoubleClickAction
 }
 
 export const DEFAULT_PET_SETTINGS: PetSettings = {
@@ -36,7 +54,11 @@ export const DEFAULT_PET_SETTINGS: PetSettings = {
   idleAnimation: true,
   clickThrough: false,
   scale: 1,
-  bubbleDurationMs: 4000
+  bubbleDurationMs: 4000,
+  launchAtLogin: false,
+  doNotDisturb: false,
+  sensitivity: 'normal',
+  doubleClickAction: 'panel'
 }
 
 export const PET_SCALE_MIN = 0.6
