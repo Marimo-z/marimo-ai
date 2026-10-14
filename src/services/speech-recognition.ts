@@ -1,6 +1,6 @@
 import type { Result } from '../../shared/ipc'
 import { ASR_SAMPLE_RATE, RECORDING_MAX_MS, RECORDING_MIN_MS } from '../../shared/voice'
-import { encodeWav, peakLevel } from '../utils/wav'
+import { encodeWav, peakLevel } from '../../shared/wav'
 
 export type RecognitionErrorKind =
   'permission' | 'no-device' | 'device-busy' | 'unsupported' | 'too-short' | 'silent' | 'service'

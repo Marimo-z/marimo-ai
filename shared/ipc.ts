@@ -1,7 +1,15 @@
 import type { ChatSendResult, ChatState } from './chat'
 import type { PetEmotion, PetSettings } from './pet'
 import type { AIProfile, AppSettings, SettingsSection } from './settings'
-import type { PetVoice, SpeechOutcome, VoiceKeyKind, VoiceKeyStatus, VoiceState } from './voice'
+import type {
+  LocalModelId,
+  LocalModelStatus,
+  PetVoice,
+  SpeechOutcome,
+  VoiceKeyKind,
+  VoiceKeyStatus,
+  VoiceState
+} from './voice'
 
 export const IPC = {
   petGetSettings: 'pet:get-settings',
@@ -37,6 +45,12 @@ export const IPC = {
   voiceKeyStatus: 'voice:key-status',
   voiceKeySet: 'voice:key-set',
   voiceKeyDelete: 'voice:key-delete',
+  voiceModels: 'voice:models',
+  voiceModelsChanged: 'voice:models-changed',
+  voiceModelDownload: 'voice:model-download',
+  voiceModelCancel: 'voice:model-cancel',
+  voiceModelImport: 'voice:model-import',
+  voiceModelDelete: 'voice:model-delete',
   petResetPosition: 'pet:reset-position',
   petPreviewSay: 'pet:preview-say',
   appGetInfo: 'app:get-info'
@@ -159,6 +173,14 @@ export interface VoiceBridge {
   getKeyStatus(): Promise<VoiceKeyStatus>
   setKey(kind: VoiceKeyKind, key: string): Promise<Result<VoiceKeyStatus>>
   deleteKey(kind: VoiceKeyKind): Promise<VoiceKeyStatus>
+  getModels(): Promise<LocalModelStatus[]>
+  onModelsChanged(listener: (statuses: LocalModelStatus[]) => void): Unsubscribe
+  /** Starts a download from the configured source; progress arrives via `onModelsChanged`. */
+  downloadModel(id: LocalModelId): Promise<void>
+  cancelDownload(id: LocalModelId): Promise<void>
+  /** Opens a folder picker and copies the model; `null` when the picker was dismissed. */
+  importModel(id: LocalModelId): Promise<Result<null> | null>
+  deleteModel(id: LocalModelId): Promise<Result<null>>
 }
 
 export interface MarimoBridge {

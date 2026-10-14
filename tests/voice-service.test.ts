@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { VoiceService } from '../electron/main/services/voice/voice-service'
+import { LocalEngineError } from '../electron/main/services/local-voice/errors'
+import { VoiceService, type LocalSpeech } from '../electron/main/services/voice/voice-service'
 import type { PetCommand } from '../shared/ipc'
 import { DEFAULT_SETTINGS, type AppSettings, type VoiceSettings } from '../shared/settings'
 import type { VoiceState } from '../shared/voice'
-import { encodeWav } from '../src/utils/wav'
+import { decodeWav, encodeWav } from '../shared/wav'
 
-function setup(voice: Partial<VoiceSettings> = {}, fetchImpl?: typeof fetch, dnd = false) {
+function setup(
+  voice: Partial<VoiceSettings> = {},
+  fetchImpl?: typeof fetch,
+  dnd = false,
+  local?: LocalSpeech
+) {
   const settings: AppSettings = structuredClone(DEFAULT_SETTINGS)
   settings.voice = { ...settings.voice, ...voice }
   settings.pet.doNotDisturb = dnd
@@ -16,6 +22,7 @@ function setup(voice: Partial<VoiceSettings> = {}, fetchImpl?: typeof fetch, dnd
     getKey: () => 'sk-voice',
     onPet: (command) => pet.push(command),
     onState: (state) => states.push(state),
+    local,
     fetchImpl,
     mockDelayMs: 0
   })
@@ -126,6 +133,46 @@ describe('VoiceService cloud voice', () => {
   })
 })
 
+function fakeLocal(overrides: Partial<LocalSpeech> & { ready?: boolean } = {}): LocalSpeech {
+  const { ready = true, ...rest } = overrides
+  return {
+    isReady: () => ready,
+    transcribe: async () => '',
+    synthesize: async () => ({ samples: new Float32Array(240).fill(0.1), sampleRate: 24000 }),
+    ...rest
+  }
+}
+
+describe('VoiceService local voice', () => {
+  it('synthesizes on device and sends a WAV with the bubble', async () => {
+    const synthesize = vi.fn(fakeLocal().synthesize)
+    const { service, pet } = setup(
+      { ttsProvider: 'local', localVoice: 7, rate: 1.2 },
+      undefined,
+      false,
+      fakeLocal({ synthesize })
+    )
+    expect(await service.speak('你好')).toEqual({ ok: true, data: null })
+    expect(synthesize.mock.calls[0]?.slice(0, 3)).toEqual(['你好', 7, 1.2])
+    const voice = (pet[0] as { voice: { engine: string; mime: string; data: Uint8Array } }).voice
+    expect(voice).toMatchObject({ engine: 'audio', mime: 'audio/wav' })
+    expect(decodeWav(voice.data)).toMatchObject({ sampleRate: 24000 })
+  })
+
+  it('falls back to a silent bubble when the model is missing', async () => {
+    const { service, pet } = setup(
+      { ttsProvider: 'local' },
+      undefined,
+      false,
+      fakeLocal({ ready: false })
+    )
+    const result = await service.speak('你好', 'happy')
+    expect(!result.ok && result.error).toContain('尚未下载')
+    expect(pet).toEqual([{ type: 'say', text: '你好', emotion: 'happy' }])
+    expect(service.state().lastError).toContain('语音合成失败')
+  })
+})
+
 describe('VoiceService.transcribe', () => {
   const wav = encodeWav(new Float32Array(1600).fill(0.2), 16000)
 
@@ -138,16 +185,47 @@ describe('VoiceService.transcribe', () => {
   })
 
   it('returns trimmed text from the service and explains empty or failed results', async () => {
-    const ok = setup({}, vi.fn(async () => Response.json({ text: '  你好  ' })) as typeof fetch)
+    const cloud = { asrProvider: 'openai-compatible' } as const
+    const ok = setup(cloud, vi.fn(async () => Response.json({ text: '  你好  ' })) as typeof fetch)
     expect(await ok.service.transcribe(wav)).toEqual({ ok: true, data: '你好' })
 
-    const empty = setup({}, vi.fn(async () => Response.json({ text: ' ' })) as typeof fetch)
+    const empty = setup(cloud, vi.fn(async () => Response.json({ text: ' ' })) as typeof fetch)
     expect(await empty.service.transcribe(wav)).toMatchObject({ ok: false })
 
-    const down = setup({}, vi.fn(async () => new Response('', { status: 503 })) as typeof fetch)
+    const down = setup(cloud, vi.fn(async () => new Response('', { status: 503 })) as typeof fetch)
     const failed = await down.service.transcribe(wav)
     expect(failed.ok).toBe(false)
     expect(!failed.ok && failed.error).toContain('语音识别失败')
+  })
+
+  it('the local recognizer gets the decoded samples', async () => {
+    const transcribe = vi.fn(async () => ' 本地结果 ')
+    const local = fakeLocal({ transcribe })
+    const { service } = setup({ asrProvider: 'local' }, undefined, false, local)
+    expect(await service.transcribe(wav)).toEqual({ ok: true, data: '本地结果' })
+    const [samples, rate] = transcribe.mock.calls[0] as unknown as [Float32Array, number]
+    expect(rate).toBe(16000)
+    expect(samples).toHaveLength(1600)
+    expect(samples[0]).toBeCloseTo(0.2, 3)
+  })
+
+  it('explains a missing local model or an engine failure', async () => {
+    const missing = setup({ asrProvider: 'local' }, undefined, false, fakeLocal({ ready: false }))
+    const result = await missing.service.transcribe(wav)
+    expect(!result.ok && result.error).toContain('尚未下载')
+
+    const crash = fakeLocal({
+      transcribe: async () => {
+        throw new LocalEngineError('本地语音引擎意外退出，请重试')
+      }
+    })
+    const crashed = await setup(
+      { asrProvider: 'local' },
+      undefined,
+      false,
+      crash
+    ).service.transcribe(wav)
+    expect(crashed).toEqual({ ok: false, error: '语音识别失败：本地语音引擎意外退出，请重试' })
   })
 
   it('the mock recognizer works offline', async () => {

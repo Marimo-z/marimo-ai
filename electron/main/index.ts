@@ -8,6 +8,8 @@ import { ChatHistoryStore } from './services/chat-history'
 import { ChatService } from './services/chat-service'
 import { ConfigStore } from './services/config-store'
 import { PROACTIVE_CHECK_INTERVAL_MS, shouldSpeakProactively } from './services/proactive'
+import { LocalVoiceEngine } from './services/local-voice/engine'
+import { ModelStore } from './services/local-voice/model-store'
 import { restrictPermissions } from './permissions'
 import { aiKeyName, SecureStorage, voiceKeyName } from './services/secure-storage'
 import { SettingsService } from './services/settings-service'
@@ -42,11 +44,22 @@ if (!app.requestSingleInstanceLock()) {
     const pet = new PetWindow(store, settings)
     const panel = new SettingsWindow()
     restrictPermissions(() => panel.webContents)
+    const models = new ModelStore(join(userData, 'models'), (statuses) =>
+      panel.broadcastModels(statuses)
+    )
+    const engine = new LocalVoiceEngine(join(__dirname, 'local-voice-worker.js'))
     const voice = new VoiceService({
       getSettings: () => settings.get(),
       getKey: (kind) => secrets.get(voiceKeyName(kind)),
       onPet: (command) => pet.sendCommand(command),
-      onState: (state) => panel.broadcastVoice(state)
+      onState: (state) => panel.broadcastVoice(state),
+      local: {
+        isReady: (kind) => models.isReady(kind === 'asr' ? 'sensevoice' : 'kokoro'),
+        transcribe: (samples, sampleRate, signal) =>
+          engine.transcribe(models.dir('sensevoice'), samples, sampleRate, signal),
+        synthesize: (text, sid, speed, signal) =>
+          engine.synthesize(models.dir('kokoro'), text, sid, speed, signal)
+      }
     })
     const chat = new ChatService({
       getSettings: () => settings.get(),
@@ -96,7 +109,7 @@ if (!app.requestSingleInstanceLock()) {
     })
 
     registerPetIpc(pet, actions, voice)
-    registerSettingsIpc({ settings, secrets, pet, panel, chat, voice })
+    registerSettingsIpc({ settings, secrets, pet, panel, chat, voice, models, engine })
     pet.create()
     tray = createTray(pet, actions)
 
@@ -108,6 +121,8 @@ if (!app.requestSingleInstanceLock()) {
       if (proactiveTimer) clearInterval(proactiveTimer)
       chat.cancel()
       voice.dispose()
+      models.cancelAll()
+      engine.stop()
       pet.prepareQuit()
       store.flush()
       tray?.destroy()

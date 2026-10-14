@@ -7,7 +7,7 @@ import type {
   VoiceBridge
 } from '../../../shared/ipc'
 import { DEFAULT_SETTINGS, type AppSettings } from '../../../shared/settings'
-import type { VoiceKeyStatus } from '../../../shared/voice'
+import { LOCAL_MODEL_IDS, type VoiceKeyStatus } from '../../../shared/voice'
 
 /**
  * In-memory stand-in used only when the page is opened in a normal browser during development
@@ -121,7 +121,20 @@ function createBrowserPreviewVoiceBridge(): VoiceBridge {
     async deleteKey(kind) {
       keys = { ...keys, [kind]: false }
       return keys
-    }
+    },
+    getModels: async () =>
+      LOCAL_MODEL_IDS.map((id) => ({
+        id,
+        state: 'missing',
+        receivedBytes: 0,
+        totalBytes: 0,
+        error: null
+      })),
+    onModelsChanged: () => () => {},
+    downloadModel: async () => {},
+    cancelDownload: async () => {},
+    importModel: async () => ({ ok: false, error: '浏览器预览中无法导入模型' }),
+    deleteModel: async () => ({ ok: true, data: null })
   }
 }
 

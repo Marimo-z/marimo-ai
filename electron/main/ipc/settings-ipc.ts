@@ -1,4 +1,4 @@
-import { app, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { app, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
   IPC,
   type AIKeyStatus,
@@ -13,8 +13,15 @@ import type { ChatService } from '../services/chat-service'
 import { aiProfileSchema, formatIssues } from '../services/config-schema'
 import { aiKeyName, voiceKeyName, type SecureStorage } from '../services/secure-storage'
 import { SettingsValidationError, type SettingsService } from '../services/settings-service'
+import type { LocalVoiceEngine } from '../services/local-voice/engine'
+import type { ModelStore } from '../services/local-voice/model-store'
 import type { VoiceService } from '../services/voice/voice-service'
-import { isVoiceKeyKind, type VoiceKeyStatus } from '../../../shared/voice'
+import {
+  isLocalModelId,
+  isVoiceKeyKind,
+  LOCAL_MODELS,
+  type VoiceKeyStatus
+} from '../../../shared/voice'
 import type { PetWindow } from '../windows/pet-window'
 import type { SettingsWindow } from '../windows/settings-window'
 
@@ -28,6 +35,8 @@ interface Deps {
   panel: SettingsWindow
   chat: ChatService
   voice: VoiceService
+  models: ModelStore
+  engine: LocalVoiceEngine
 }
 
 /** Trims and checks an API key; returns an error message when it is unusable. */
@@ -40,7 +49,16 @@ function normalizeKey(key: unknown): { ok: true; key: string } | { ok: false; er
   return { ok: true, key: trimmed }
 }
 
-export function registerSettingsIpc({ settings, secrets, pet, panel, chat, voice }: Deps): void {
+export function registerSettingsIpc({
+  settings,
+  secrets,
+  pet,
+  panel,
+  chat,
+  voice,
+  models,
+  engine
+}: Deps): void {
   /** Registers a handler that only the control panel may call. */
   const handle = <A extends unknown[], R>(
     channel: string,
@@ -142,6 +160,41 @@ export function registerSettingsIpc({ settings, secrets, pet, panel, chat, voice
   handle(IPC.voiceKeyDelete, (kind: unknown) => {
     if (isVoiceKeyKind(kind)) secrets.delete(voiceKeyName(kind))
     return voiceKeyStatus()
+  })
+
+  handle(IPC.voiceModels, () => models.list())
+  handle(IPC.voiceModelDownload, (id: unknown) => {
+    if (isLocalModelId(id)) void models.download(id, settings.get().voice.modelSource)
+  })
+  handle(IPC.voiceModelCancel, (id: unknown) => {
+    if (isLocalModelId(id)) models.cancel(id)
+  })
+  handle(IPC.voiceModelImport, async (id: unknown): Promise<Result<null> | null> => {
+    if (!isLocalModelId(id)) return { ok: false, error: '无效的模型' }
+    const options: Electron.OpenDialogOptions = {
+      title: `选择 ${LOCAL_MODELS[id].name} 模型文件夹`,
+      properties: ['openDirectory']
+    }
+    const owner = panel.window
+    const picked = owner
+      ? await dialog.showOpenDialog(owner, options)
+      : await dialog.showOpenDialog(options)
+    const folder = picked.filePaths[0]
+    if (picked.canceled || !folder) return null
+    // The worker may hold the old model files open.
+    engine.stop()
+    const result = await models.importFolder(id, folder)
+    return result.ok ? { ok: true, data: null } : result
+  })
+  handle(IPC.voiceModelDelete, async (id: unknown): Promise<Result<null>> => {
+    if (!isLocalModelId(id)) return { ok: false, error: '无效的模型' }
+    engine.stop()
+    try {
+      await models.remove(id)
+      return { ok: true, data: null }
+    } catch (error) {
+      return { ok: false, error: `删除失败：${(error as Error).message}` }
+    }
   })
 
   handle(IPC.petResetPosition, () => pet.resetPosition())

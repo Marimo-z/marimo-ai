@@ -7,14 +7,21 @@ import {
   ASR_PROVIDER_LABELS,
   ASR_PROVIDERS,
   ASR_SERVICE_PRESETS,
+  KOKORO_CHINESE_VOICES,
+  LOCAL_MODEL_IDS,
+  LOCAL_MODELS,
+  MODEL_SOURCE_LABELS,
+  MODEL_SOURCES,
   TTS_PROVIDER_LABELS,
   TTS_PROVIDERS,
-  TTS_SERVICE_PRESETS
+  TTS_SERVICE_PRESETS,
+  type ModelSource
 } from '../../shared/voice'
 import { useSettingsStore } from '../app/stores/settings'
 import { useVoiceStore } from '../app/stores/voice'
 import PageHeader from '../components/common/PageHeader.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
+import LocalModelItem from '../components/voice/LocalModelItem.vue'
 import VoiceKeyField from '../components/voice/VoiceKeyField.vue'
 import { useVoiceInput } from '../composables/useVoiceInput'
 import { MicrophoneRecorder, RecognitionError } from '../services/speech-recognition'
@@ -34,6 +41,16 @@ async function commit(field: TextField): Promise<void> {
   const value = text[field].trim()
   if (value !== voice.value[field]) await set({ [field]: value })
 }
+
+// --- Local models ---
+const VOICE_GROUPS = (['女声', '男声'] as const).map((label) => ({
+  label,
+  options: KOKORO_CHINESE_VOICES.filter((o) => o.group === label)
+}))
+const MODEL_REPOS = LOCAL_MODEL_IDS.map((id) => LOCAL_MODELS[id].repo).join('、')
+const ttsModelReady = computed(() => voiceStore.model('kokoro')?.state === 'ready')
+const asrModelReady = computed(() => voiceStore.model('sensevoice')?.state === 'ready')
+const downloading = computed(() => voiceStore.models.some((m) => m.state === 'downloading'))
 
 function applyTTSPreset(id: string): void {
   const preset = TTS_SERVICE_PRESETS.find((p) => p.id === id)
@@ -191,6 +208,27 @@ onBeforeUnmount(() => {
           />
         </template>
 
+        <template v-else-if="voice.ttsProvider === 'local'">
+          <el-form-item label="音色">
+            <el-select
+              :model-value="voice.localVoice"
+              filterable
+              @change="(v: number) => set({ localVoice: v })"
+            >
+              <el-option-group v-for="g in VOICE_GROUPS" :key="g.label" :label="g.label">
+                <el-option v-for="o in g.options" :key="o.sid" :label="o.label" :value="o.sid" />
+              </el-option-group>
+            </el-select>
+          </el-form-item>
+          <el-alert
+            v-if="!ttsModelReady"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="还没有本地语音模型，请在下方“本地模型”中下载或导入 Kokoro。"
+          />
+        </template>
+
         <template v-else-if="voice.ttsProvider === 'openai-compatible'">
           <el-alert
             type="info"
@@ -229,7 +267,7 @@ onBeforeUnmount(() => {
         </template>
 
         <el-alert
-          v-else
+          v-else-if="voice.ttsProvider === 'mock'"
           type="info"
           show-icon
           :closable="false"
@@ -277,6 +315,9 @@ onBeforeUnmount(() => {
           />
         </el-form-item>
         <p v-if="voice.ttsProvider !== 'system'" class="hint">音调只对 Windows 系统语音生效。</p>
+        <p v-if="voice.ttsProvider === 'local'" class="hint">
+          本地模型首次朗读需要加载几秒，之后会快很多。
+        </p>
       </el-form>
     </SettingsCard>
 
@@ -348,6 +389,22 @@ onBeforeUnmount(() => {
             <VoiceKeyField kind="asr" />
           </el-form-item>
         </template>
+        <template v-else-if="voice.asrProvider === 'local'">
+          <el-alert
+            v-if="!asrModelReady"
+            type="warning"
+            show-icon
+            :closable="false"
+            title="还没有本地识别模型，请在下方“本地模型”中下载或导入 SenseVoice。"
+          />
+          <el-alert
+            v-else
+            type="success"
+            show-icon
+            :closable="false"
+            title="录音只在本机识别，不会上传。"
+          />
+        </template>
         <el-alert
           v-else
           type="info"
@@ -394,6 +451,32 @@ onBeforeUnmount(() => {
           </div>
         </el-form-item>
       </el-form>
+    </SettingsCard>
+
+    <SettingsCard
+      title="本地模型"
+      description="离线运行的识别和合成模型，下载后无需网络和 API Key。模型保存在应用数据目录。"
+    >
+      <el-form label-position="left" label-width="96px" @submit.prevent>
+        <el-form-item label="下载源">
+          <el-select
+            :model-value="voice.modelSource"
+            :disabled="downloading"
+            @change="(v: ModelSource) => set({ modelSource: v })"
+          >
+            <el-option
+              v-for="id in MODEL_SOURCES"
+              :key="id"
+              :label="MODEL_SOURCE_LABELS[id]"
+              :value="id"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <LocalModelItem v-for="id in LOCAL_MODEL_IDS" :id="id" :key="id" />
+      <p class="hint import-hint">
+        下载慢时，也可以从 Hugging Face 手动下载模型仓库（{{ MODEL_REPOS }}），再点击“导入文件夹”。
+      </p>
     </SettingsCard>
   </div>
 </template>
@@ -471,5 +554,9 @@ p.hint {
 
 .recognized {
   font-size: 13px;
+}
+
+.import-hint {
+  margin-top: 14px;
 }
 </style>

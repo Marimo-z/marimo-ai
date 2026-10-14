@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pickSystemVoice } from '../src/utils/voice-select'
-import { encodeWav, peakLevel } from '../src/utils/wav'
+import { decodeWav, encodeWav, peakLevel } from '../shared/wav'
 
 describe('encodeWav', () => {
   it('writes a 16-bit mono PCM header and clamps samples', () => {
@@ -18,6 +18,24 @@ describe('encodeWav', () => {
     expect([0, 1, 2, 3].map((i) => view.getInt16(44 + i * 2, true))).toEqual([
       0, 32767, -32768, 32767
     ])
+  })
+
+  it('decodeWav round-trips encodeWav and skips unknown chunks', () => {
+    const bytes = encodeWav(new Float32Array([0, 0.5, -0.5]), 24000)
+    expect(decodeWav(bytes)?.sampleRate).toBe(24000)
+    expect(Array.from(decodeWav(bytes)!.samples).map((s) => +s.toFixed(3))).toEqual([0, 0.5, -0.5])
+
+    // A LIST chunk between "fmt " and "data", as some encoders write.
+    const list = new Uint8Array([0x4c, 0x49, 0x53, 0x54, 2, 0, 0, 0, 0, 0])
+    const withList = new Uint8Array([...bytes.subarray(0, 36), ...list, ...bytes.subarray(36)])
+    expect(decodeWav(withList)?.samples).toHaveLength(3)
+  })
+
+  it('decodeWav rejects stereo and non-WAV data', () => {
+    const stereo = encodeWav(new Float32Array(4), 16000)
+    new DataView(stereo.buffer).setUint16(22, 2, true)
+    expect(decodeWav(stereo)).toBeNull()
+    expect(decodeWav(new TextEncoder().encode('not a wav file'))).toBeNull()
   })
 
   it('peakLevel returns the largest magnitude', () => {

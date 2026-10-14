@@ -1,8 +1,10 @@
 import { DEFAULT_PET_SETTINGS, type PetSettings } from './pet'
 import {
   ASR_SERVICE_PRESETS,
+  KOKORO_DEFAULT_SPEAKER,
   TTS_SERVICE_PRESETS,
   type ASRProviderId,
+  type ModelSource,
   type TTSProviderId
 } from './voice'
 
@@ -127,11 +129,15 @@ export interface VoiceSettings {
   volume: number
   /** Only the system voice supports pitch. */
   pitch: number
+  /** Kokoro speaker id for the local voice. */
+  localVoice: number
   /** Reads replies aloud; replies to voice input are always read. */
   autoSpeak: boolean
   asrProvider: ASRProviderId
   asrBaseUrl: string
   asrModel: string
+  /** Where local models are downloaded from. */
+  modelSource: ModelSource
 }
 
 export const GAME_DIFFICULTIES = ['easy', 'normal', 'hard'] as const
@@ -202,10 +208,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     rate: 1,
     volume: 0.8,
     pitch: 1,
+    localVoice: KOKORO_DEFAULT_SPEAKER,
     autoSpeak: false,
-    asrProvider: 'openai-compatible',
+    asrProvider: 'local',
     asrBaseUrl: ASR_SERVICE_PRESETS[0].baseUrl,
-    asrModel: ASR_SERVICE_PRESETS[0].model
+    asrModel: ASR_SERVICE_PRESETS[0].model,
+    modelSource: 'hf-mirror'
   },
   games: {
     dialogueEnabled: true,

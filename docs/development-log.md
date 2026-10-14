@@ -171,6 +171,23 @@ DeepSeek 已没有 `deepseek-chat` 模型，预设默认模型改为 `deepseek-f
 - 在线合成要等整段音频生成后才开始播放，长回复会有明显等待。
 - 系统语音的音色列表取决于 Windows 安装的语音包；控制面板和桌宠窗口读取的是同一份列表。
 
+## 2026-10-14 · 本地轻量语音（SenseVoice / Kokoro）
+
+用户询问能否集成本地轻量化识别和合成。可以：Windows 系统语音已经是本地合成；识别没有可用的系统接口（Electron 里的 Web Speech 需要 Google 密钥），所以接入 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 的 int8 模型，在 CPU 上离线运行。
+
+### 选型
+
+- 识别：SenseVoice Small int8（约 228 MB），中文 / 粤语 / 英语 / 日语 / 韩语，带标点。
+- 合成：Kokoro v1.1 中文 int8（约 185 MB），100 个中文音色，支持中英混读。系统语音仍然作为默认朗读（无需下载）。
+- 运行时：`sherpa-onnx-node` 1.13.8，在独立的 `utilityProcess` 中加载，避免推理卡住或拖垮主进程。
+- 未选用 Whisper.cpp / piper：SenseVoice 对中文标点更好，Kokoro 中文音色更多；sherpa-onnx 同时覆盖识别和合成，只引入一个原生模块。
+
+### 完成内容
+
+- 语音设置增加"本地模型 Kokoro / SenseVoice"；底部可下载、暂停续传、导入文件夹、删除。
+- 默认识别改为本地模型（未下载时会提示去下载）；默认朗读仍是系统语音。
+- 模型保存在 `%APPDATA%\marimo\models\`，不进 git。
+
 ### 下一步（阶段 5）
 
 定义统一的游戏接口，先实现井字棋（三个难度），再实现五子棋，并接入游戏事件、桌宠情绪和对话。

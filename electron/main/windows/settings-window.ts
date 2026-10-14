@@ -4,7 +4,7 @@ import type { ChatState } from '../../../shared/chat'
 import { IPC } from '../../../shared/ipc'
 import type { AppSettings } from '../../../shared/settings'
 import { PANEL_CHROME, PANEL_TITLE_BAR_HEIGHT } from '../../../shared/theme'
-import type { VoiceState } from '../../../shared/voice'
+import type { LocalModelStatus, VoiceState } from '../../../shared/voice'
 
 export const PANEL_ROUTES = [
   '/overview',
@@ -55,6 +55,14 @@ export class SettingsWindow {
 
   broadcastVoice(state: VoiceState): void {
     this.win?.webContents.send(IPC.voiceChanged, state)
+  }
+
+  broadcastModels(statuses: LocalModelStatus[]): void {
+    this.win?.webContents.send(IPC.voiceModelsChanged, statuses)
+  }
+
+  get window(): BrowserWindow | null {
+    return this.win
   }
 
   private create(route: PanelRoute): void {

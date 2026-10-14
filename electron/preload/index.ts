@@ -52,7 +52,13 @@ const bridge: MarimoBridge = {
     transcribe: (wav) => ipcRenderer.invoke(IPC.voiceTranscribe, wav),
     getKeyStatus: () => ipcRenderer.invoke(IPC.voiceKeyStatus),
     setKey: (kind, key) => ipcRenderer.invoke(IPC.voiceKeySet, kind, key),
-    deleteKey: (kind) => ipcRenderer.invoke(IPC.voiceKeyDelete, kind)
+    deleteKey: (kind) => ipcRenderer.invoke(IPC.voiceKeyDelete, kind),
+    getModels: () => ipcRenderer.invoke(IPC.voiceModels),
+    onModelsChanged: (listener) => subscribe(IPC.voiceModelsChanged, listener),
+    downloadModel: (id) => ipcRenderer.invoke(IPC.voiceModelDownload, id),
+    cancelDownload: (id) => ipcRenderer.invoke(IPC.voiceModelCancel, id),
+    importModel: (id) => ipcRenderer.invoke(IPC.voiceModelImport, id),
+    deleteModel: (id) => ipcRenderer.invoke(IPC.voiceModelDelete, id)
   }
 }
 

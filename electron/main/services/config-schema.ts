@@ -24,7 +24,12 @@ import {
   type AppSettings,
   type SettingsSection
 } from '../../../shared/settings'
-import { ASR_PROVIDERS, TTS_PROVIDERS } from '../../../shared/voice'
+import {
+  ASR_PROVIDERS,
+  KOKORO_SPEAKER_MAX,
+  MODEL_SOURCES,
+  TTS_PROVIDERS
+} from '../../../shared/voice'
 
 type FlatSection = Exclude<SettingsSection, 'ai'>
 
@@ -74,10 +79,12 @@ const shapes = {
     rate: z.number().min(0.5).max(2),
     volume: z.number().min(0).max(1),
     pitch: z.number().min(0.5).max(2),
+    localVoice: z.number().int().min(0).max(KOKORO_SPEAKER_MAX),
     autoSpeak: z.boolean(),
     asrProvider: z.enum(ASR_PROVIDERS),
     asrBaseUrl: z.string().trim().max(500),
-    asrModel: z.string().trim().max(200)
+    asrModel: z.string().trim().max(200),
+    modelSource: z.enum(MODEL_SOURCES)
   },
   games: {
     dialogueEnabled: z.boolean(),

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { isPcmWav, synthesizeSpeech, transcribeAudio } from '../electron/main/services/voice/cloud'
-import { encodeWav } from '../src/utils/wav'
+import { encodeWav } from '../shared/wav'
 
 const target = {
   baseUrl: 'https://api.example.com/v1/',

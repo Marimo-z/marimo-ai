@@ -10,14 +10,29 @@ import {
   type VoiceState,
   type VoiceStatus
 } from '../../../../shared/voice'
+import { decodeWav, encodeWav } from '../../../../shared/wav'
 import { AIRequestError } from '../ai/errors'
-import { isPcmWav, synthesizeSpeech, transcribeAudio } from './cloud'
+import { LocalEngineError } from '../local-voice/errors'
+import { isPcmWav, synthesizeSpeech, transcribeAudio, type SynthesizedAudio } from './cloud'
+
+/** On-device recognition and synthesis (sherpa-onnx). */
+export interface LocalSpeech {
+  isReady(kind: 'asr' | 'tts'): boolean
+  transcribe(samples: Float32Array, sampleRate: number, signal: AbortSignal): Promise<string>
+  synthesize(
+    text: string,
+    sid: number,
+    speed: number,
+    signal: AbortSignal
+  ): Promise<{ samples: Float32Array; sampleRate: number }>
+}
 
 export interface VoiceServiceDeps {
   getSettings(): AppSettings
   getKey(kind: VoiceKeyKind): string | null
   onPet(command: PetCommand): void
   onState(state: VoiceState): void
+  local?: LocalSpeech
   fetchImpl?: typeof fetch
   /** Delay of the offline recognizer, shortened in tests. */
   mockDelayMs?: number
@@ -34,6 +49,12 @@ const fail = (error: string): { ok: false; error: string } => ({ ok: false, erro
 function toBytes(input: unknown): Uint8Array | null {
   if (input instanceof Uint8Array) return input
   if (input instanceof ArrayBuffer) return new Uint8Array(input)
+  return null
+}
+
+/** Message of an expected failure that is safe to show; null for unexpected errors. */
+function knownMessage(error: unknown): string | null {
+  if (error instanceof AIRequestError || error instanceof LocalEngineError) return error.message
   return null
 }
 
@@ -100,21 +121,7 @@ export class VoiceService {
     this.synthController = controller
     this.setStatus('synthesizing', null)
     try {
-      const audio = await synthesizeSpeech(
-        {
-          baseUrl: voice.ttsBaseUrl,
-          model: voice.ttsModel,
-          voice: voice.ttsVoice,
-          speed: voice.rate
-        },
-        text,
-        {
-          apiKey: this.deps.getKey('tts'),
-          timeoutMs: TTS_TIMEOUT_MS,
-          signal: controller.signal,
-          fetchImpl: this.deps.fetchImpl
-        }
-      )
+      const audio = await this.synthesizeAudio(voice, text, controller.signal)
       if (this.currentId !== id) return fail('已停止')
       this.synthController = null
       this.deps.onPet({
@@ -129,8 +136,8 @@ export class VoiceService {
       // A newer line took over: it owns the pet and the state now.
       if (this.currentId !== id && this.currentId !== 0) return fail('已停止')
       if (this.synthController === controller) this.synthController = null
-      const message = error instanceof AIRequestError ? error.message : '语音合成失败'
-      if (!(error instanceof AIRequestError)) console.error('[voice] synthesis failed', error)
+      const message = knownMessage(error) ?? '语音合成失败'
+      if (!knownMessage(error)) console.error('[voice] synthesis failed', error)
       const stopped = this.currentId === 0
       this.currentId = 0
       // The reply still has to reach the pet, just without sound.
@@ -175,19 +182,26 @@ export class VoiceService {
     const controller = new AbortController()
     this.transcribeController = controller
     try {
-      const raw =
-        voice.asrProvider === 'mock'
-          ? await this.mockTranscribe()
-          : await transcribeAudio({ baseUrl: voice.asrBaseUrl, model: voice.asrModel }, wav, {
-              apiKey: this.deps.getKey('asr'),
-              timeoutMs: ASR_TIMEOUT_MS,
-              signal: controller.signal,
-              fetchImpl: this.deps.fetchImpl
-            })
+      let raw: string
+      if (voice.asrProvider === 'mock') raw = await this.mockTranscribe()
+      else if (voice.asrProvider === 'local') {
+        const local = this.requireLocal('asr')
+        const decoded = decodeWav(wav)
+        if (!decoded) return fail('录音格式不正确')
+        raw = await local.transcribe(decoded.samples, decoded.sampleRate, controller.signal)
+      } else {
+        raw = await transcribeAudio({ baseUrl: voice.asrBaseUrl, model: voice.asrModel }, wav, {
+          apiKey: this.deps.getKey('asr'),
+          timeoutMs: ASR_TIMEOUT_MS,
+          signal: controller.signal,
+          fetchImpl: this.deps.fetchImpl
+        })
+      }
       const text = raw.trim().slice(0, CHAT_INPUT_MAX)
       return text ? { ok: true, data: text } : fail('没有识别到说话内容，请再试一次')
     } catch (error) {
-      if (error instanceof AIRequestError) return fail(`语音识别失败：${error.message}`)
+      const message = knownMessage(error)
+      if (message) return fail(`语音识别失败：${message}`)
       console.error('[voice] transcription failed', error)
       return fail('语音识别失败')
     } finally {
@@ -199,6 +213,46 @@ export class VoiceService {
     this.stop()
     this.transcribeController?.abort()
     if (this.watchdog) clearTimeout(this.watchdog)
+  }
+
+  private async synthesizeAudio(
+    voice: AppSettings['voice'],
+    text: string,
+    signal: AbortSignal
+  ): Promise<SynthesizedAudio> {
+    if (voice.ttsProvider === 'local') {
+      const audio = await this.requireLocal('tts').synthesize(
+        text,
+        voice.localVoice,
+        voice.rate,
+        signal
+      )
+      return { data: encodeWav(audio.samples, audio.sampleRate), mime: 'audio/wav' }
+    }
+    return synthesizeSpeech(
+      {
+        baseUrl: voice.ttsBaseUrl,
+        model: voice.ttsModel,
+        voice: voice.ttsVoice,
+        speed: voice.rate
+      },
+      text,
+      {
+        apiKey: this.deps.getKey('tts'),
+        timeoutMs: TTS_TIMEOUT_MS,
+        signal,
+        fetchImpl: this.deps.fetchImpl
+      }
+    )
+  }
+
+  private requireLocal(kind: 'asr' | 'tts'): LocalSpeech {
+    const local = this.deps.local
+    if (!local || !local.isReady(kind)) {
+      const name = kind === 'asr' ? '本地识别模型' : '本地语音模型'
+      throw new AIRequestError('invalid-input', `${name}尚未下载，请在“语音设置”中下载或导入`)
+    }
+    return local
   }
 
   private mockTranscribe(): Promise<string> {
