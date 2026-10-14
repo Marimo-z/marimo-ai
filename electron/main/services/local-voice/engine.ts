@@ -1,6 +1,9 @@
-import { utilityProcess, type UtilityProcess } from 'electron'
+import { fork, type ChildProcess } from 'node:child_process'
+import { delimiter, join } from 'node:path'
+import { decodeWav } from '../../../../shared/wav'
 import { LocalEngineError } from './errors'
-import type { WorkerRequest, WorkerResponse } from './protocol'
+import { resolveNodeExecutable } from './node-exec'
+import { pcmToBase64, type WorkerRequest, type WorkerResponse } from './protocol'
 
 type Payload = WorkerRequest extends infer R ? (R extends unknown ? Omit<R, 'id'> : never) : never
 
@@ -9,14 +12,24 @@ interface Pending {
   reject(error: Error): void
 }
 
-/** The first request also loads the model, which can take a while on slow disks. */
 const REQUEST_TIMEOUT_MS = 120_000
-/** Frees the models' memory (a few hundred MB) when voice has not been used for a while. */
 const IDLE_SHUTDOWN_MS = 5 * 60_000
 
-/** Client for the local voice worker. Starts it on demand and restarts it after a crash. */
+function nodeEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env }
+  delete env.ELECTRON_RUN_AS_NODE
+  const modules = join(process.cwd(), 'node_modules')
+  env.NODE_PATH = env.NODE_PATH ? `${modules}${delimiter}${env.NODE_PATH}` : modules
+  if (process.platform === 'win32') {
+    const native = join(modules, 'sherpa-onnx-win-x64')
+    env.PATH = `${native}${delimiter}${env.PATH ?? ''}`
+  }
+  return env
+}
+
+/** Forks a real Node process to run sherpa-onnx (Electron cannot return Kokoro's audio buffers). */
 export class LocalVoiceEngine {
-  private child: UtilityProcess | null = null
+  private child: ChildProcess | null = null
   private readonly pending = new Map<number, Pending>()
   private seq = 0
   private idleTimer: ReturnType<typeof setTimeout> | null = null
@@ -30,7 +43,7 @@ export class LocalVoiceEngine {
     signal: AbortSignal
   ): Promise<string> {
     const response = await this.request(
-      { type: 'transcribe', modelDir, samples, sampleRate },
+      { type: 'transcribe', modelDir, pcm: pcmToBase64(samples), sampleRate },
       signal
     )
     if (!('text' in response)) throw new LocalEngineError('本地识别返回了意外的结果')
@@ -45,11 +58,13 @@ export class LocalVoiceEngine {
     signal: AbortSignal
   ): Promise<{ samples: Float32Array; sampleRate: number }> {
     const response = await this.request({ type: 'synthesize', modelDir, text, sid, speed }, signal)
-    if (!('samples' in response)) throw new LocalEngineError('本地合成返回了意外的结果')
-    return { samples: response.samples, sampleRate: response.sampleRate }
+    if (!('wav' in response)) throw new LocalEngineError('本地合成返回了意外的结果')
+    const wav = Uint8Array.from(Buffer.from(response.wav, 'base64'))
+    const decoded = decodeWav(wav)
+    if (!decoded) throw new LocalEngineError('本地合成返回的音频无法解码')
+    return decoded
   }
 
-  /** Stops the worker, e.g. before its model files are deleted. */
   stop(): void {
     const child = this.child
     this.child = null
@@ -73,7 +88,6 @@ export class LocalVoiceEngine {
         this.pending.delete(id)
         this.scheduleIdle()
       }
-      // Native inference cannot be interrupted; a cancelled result is simply dropped.
       const onAbort = (): void => {
         done()
         reject(new LocalEngineError('已取消'))
@@ -94,15 +108,25 @@ export class LocalVoiceEngine {
           reject(error)
         }
       })
-      child.postMessage({ ...payload, id } as WorkerRequest)
+      child.send({ ...payload, id } as WorkerRequest)
     })
   }
 
-  private ensureChild(): UtilityProcess {
+  private ensureChild(): ChildProcess {
     if (this.child) return this.child
-    const child = utilityProcess.fork(this.workerPath, [], {
-      serviceName: 'Marimo Local Voice',
-      stdio: 'pipe'
+    let node: string
+    try {
+      node = resolveNodeExecutable()
+    } catch (error) {
+      throw new LocalEngineError((error as Error).message)
+    }
+    const child = fork(this.workerPath, [], {
+      execPath: node,
+      cwd: process.cwd(),
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      env: nodeEnv(),
+      serialization: 'json',
+      windowsHide: true
     })
     child.stderr?.on('data', (chunk: Buffer) => {
       const line = chunk.toString().trim()
@@ -111,6 +135,9 @@ export class LocalVoiceEngine {
     child.on('message', (response: WorkerResponse) =>
       this.pending.get(response?.id)?.resolve(response)
     )
+    child.on('error', (error) => {
+      this.failAll(`无法启动本地语音进程：${error.message}`)
+    })
     child.on('exit', (code) => {
       if (this.child !== child) return
       this.child = null

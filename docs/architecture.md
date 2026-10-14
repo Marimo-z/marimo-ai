@@ -15,7 +15,7 @@
 
 | 控制面板 | Vue Router 5（hash 模式）+ Element Plus 2.14 | 只在 `settings.html` 中加载，桌宠窗口不引入 |
 
-| 本地语音 | sherpa-onnx-node 1.13.8 | SenseVoice 识别、Kokoro 合成，CPU 推理，运行在 utilityProcess 中 |
+| 本地语音 | sherpa-onnx-node 1.13.8 | SenseVoice 识别、Kokoro 合成，CPU 推理，运行在系统 Node 子进程中 |
 
 按阶段引入：Phaser（阶段 6 坦克大战）、electron-builder（阶段 6 打包）。
 
@@ -51,7 +51,8 @@ electron/
       local-voice/catalog.ts 本地模型的仓库、文件清单与下载源
       local-voice/model-store.ts 模型下载（校验、断点续传）、导入、删除
       local-voice/engine.ts  本地推理进程的客户端：按需启动、超时、崩溃恢复、空闲释放
-      local-voice/worker.ts  utilityProcess 中运行的 sherpa-onnx（SenseVoice / Kokoro）
+      local-voice/node-exec.ts 解析系统 node.exe（Electron 不能跑 Kokoro 的音频缓冲）
+      local-voice/worker.ts  系统 Node 子进程中运行的 sherpa-onnx（SenseVoice / Kokoro）
     permissions.ts           权限处理：只允许控制面板使用麦克风
     pointer-tracker.ts       全局光标轮询（位置不变则不发 IPC）
     window-bounds.ts         多显示器可见性修正（纯函数）
@@ -150,8 +151,8 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 
 - **库**：`sherpa-onnx-node` 1.13.8（Node-API 原生模块，附带 Windows x64 预编译的 `sherpa-onnx.node` 和 onnxruntime），Electron 44 中无需重新编译即可加载。版本固定，因为原生模块的配置字段随版本变化。
 - **模型**：识别用 SenseVoice Small int8（`model.int8.onnx` + `tokens.txt`），合成用 Kokoro v1.1 中文 int8（模型、`voices.bin` 中 103 个音色、`espeak-ng-data`、中英词典、数字 / 日期 / 电话号码的正则化规则 `*.fst`）。Kokoro 的音色 id 是 `voices.bin` 中按名称排序的序号：0–2 为英文音色，3–57 为 55 个 `zf_*` 女声，58–102 为 45 个 `zm_*` 男声；面板只列出中文音色。
-- **进程隔离**：推理在 `utilityProcess` 中运行（构建产物 `out/main/local-voice-worker.js`），主进程的 `LocalVoiceEngine` 首次使用时启动它，按请求 id 收发消息，单次请求超时 120 秒（首次包含加载模型）。进程退出或崩溃时，所有未完成的请求失败并提示"本地语音引擎意外退出"，下次请求自动重启。空闲 5 分钟后关闭进程以释放内存（两个模型都加载时约数百 MB）。删除或导入模型前也会关闭进程，避免 Windows 上文件被占用。
-- **调用链**：录音 WAV 由主进程用 `decodeWav` 解码为 Float32 样本交给 SenseVoice；Kokoro 输出的样本由 `encodeWav` 编码为 WAV，走与在线合成相同的 `audio` 播放路径。`VoiceService` 只依赖 `LocalSpeech` 接口（`isReady / transcribe / synthesize`），模型缺失时给出"尚未下载"的提示，并保持"合成失败仍显示气泡"的行为。语速映射为 Kokoro 的 `speed`。
+- **进程隔离**：推理不在 Electron 进程里跑。Electron 44 拒绝 N-API 的 external ArrayBuffer（Kokoro 的 `generate()` 会抛 `External buffers are not allowed`，`generateAsync()` 则变成 `TTS settlement failed`），因此 `LocalVoiceEngine` 用系统 `node.exe` `fork` 构建产物 `out/main/local-voice-worker.js`。音频只以 base64 的 PCM/WAV 字符串过 IPC。首次使用时启动子进程，按请求 id 收发消息，单次请求超时 120 秒（首次包含加载模型）。进程退出或崩溃时，所有未完成的请求失败并提示"本地语音引擎意外退出"，下次请求自动重启。空闲 5 分钟后关闭进程以释放内存（两个模型都加载时约数百 MB）。删除或导入模型前也会关闭进程，避免 Windows 上文件被占用。找不到系统 Node 时提示去安装。
+- **调用链**：录音 WAV 由主进程用 `decodeWav` 解码为 Float32 样本，再编码成 base64 PCM 交给 SenseVoice；Kokoro 在 Node 子进程里把样本拷出并 `encodeWav`，主进程解码后走与在线合成相同的 `audio` 播放路径。`VoiceService` 只依赖 `LocalSpeech` 接口（`isReady / transcribe / synthesize`），模型缺失时给出"尚未下载"的提示，并保持"合成失败仍显示气泡"的行为。语速映射为 Kokoro 的 `speed`。
 - **下载**（`ModelStore`）：根据 Hugging Face 的文件列表 API（`/api/models/{repo}/tree/main?recursive=true`，跟随 `Link: rel="next"` 分页）逐个下载 `/{repo}/resolve/main/{path}`，而不是 sherpa-onnx 在 GitHub Releases 上的 tar.bz2：国内访问 GitHub 下载极慢，且逐文件下载可以只取需要的文件、按 LFS 的 SHA-256 校验、用 `Range` 断点续传。文件列表经 zod 校验，任何路径含 `..`、绝对路径或反斜杠都会让整次下载失败。文件先写入 `models/<id>.download/*.part`，大小与校验和都正确后才移入 `models/<id>`；并发 4 个文件，每个文件重试 3 次；暂停会保留已下载部分。下载源可选 hf-mirror.com（默认）或 huggingface.co。
 - **导入**：主进程弹出系统目录选择框（渲染进程不能传入任意路径），接受模型文件夹本身或它的上一级（解压后的压缩包），检查必需文件后复制到 `models/<id>`。
 - **打包**（阶段 6）：原生模块不能放在 asar 中，需要 `asarUnpack` `sherpa-onnx-node` 和 `sherpa-onnx-win-x64`。

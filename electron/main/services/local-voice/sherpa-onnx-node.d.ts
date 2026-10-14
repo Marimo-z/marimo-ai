@@ -15,6 +15,10 @@ declare module 'sherpa-onnx-node' {
     static createAsync(config: object): Promise<OfflineTts>
     readonly numSpeakers: number
     readonly sampleRate: number
+    generate(request: { text: string; sid: number; speed: number }): {
+      samples: Float32Array
+      sampleRate: number
+    }
     generateAsync(request: {
       text: string
       sid: number

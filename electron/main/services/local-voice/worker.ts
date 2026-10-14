@@ -1,11 +1,11 @@
 /**
- * Runs sherpa-onnx in an Electron utility process, so heavy inference and a native crash cannot
- * freeze or take down the main process. Models are loaded on first use and kept until the
- * process is stopped by the main process.
+ * Runs sherpa-onnx in a real Node process (forked with system node.exe).
+ * Electron 44 cannot receive Kokoro's external ArrayBuffers.
  */
 import { join } from 'node:path'
 import { OfflineRecognizer, OfflineTts } from 'sherpa-onnx-node'
-import type { WorkerRequest, WorkerResponse } from './protocol'
+import { encodeWav } from '../../../../shared/wav'
+import { pcmFromBase64, type WorkerRequest, type WorkerResponse } from './protocol'
 
 const NUM_THREADS = 2
 
@@ -61,36 +61,38 @@ function tts(dir: string): Promise<OfflineTts> {
   return pending
 }
 
+function copySamples(src: Float32Array): Float32Array {
+  const copy = new Float32Array(src.length)
+  copy.set(src)
+  return copy
+}
+
 async function handle(request: WorkerRequest): Promise<WorkerResponse> {
   if (request.type === 'transcribe') {
     const engine = await recognizer(request.modelDir)
     const stream = engine.createStream()
-    stream.acceptWaveform({ samples: request.samples, sampleRate: request.sampleRate })
+    stream.acceptWaveform({ samples: pcmFromBase64(request.pcm), sampleRate: request.sampleRate })
     await engine.decodeAsync(stream)
     return { id: request.id, ok: true, text: engine.getResult(stream).text }
   }
   const engine = await tts(request.modelDir)
   const sid = Math.min(Math.max(0, Math.round(request.sid)), engine.numSpeakers - 1)
-  const audio = await engine.generateAsync({ text: request.text, sid, speed: request.speed })
-  // Copy out of the native buffer before it is sent over IPC.
-  return {
-    id: request.id,
-    ok: true,
-    samples: new Float32Array(audio.samples),
-    sampleRate: audio.sampleRate
-  }
+  const audio = engine.generate({ text: request.text, sid, speed: request.speed })
+  const wav = encodeWav(copySamples(audio.samples), audio.sampleRate)
+  return { id: request.id, ok: true, wav: Buffer.from(wav).toString('base64') }
 }
 
-process.parentPort.on('message', (event: Electron.MessageEvent) => {
-  const request = event.data as WorkerRequest
+function send(response: WorkerResponse): void {
+  process.send?.(response)
+}
+
+process.on('message', (request: WorkerRequest) => {
   handle(request)
-    .then((response) => process.parentPort.postMessage(response))
+    .then(send)
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error)
-      process.parentPort.postMessage({
-        id: request.id,
-        ok: false,
-        error: message
-      } satisfies WorkerResponse)
+      send({ id: request.id, ok: false, error: message })
     })
 })
+
+process.on('disconnect', () => process.exit(0))

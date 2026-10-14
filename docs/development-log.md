@@ -179,7 +179,7 @@ DeepSeek 已没有 `deepseek-chat` 模型，预设默认模型改为 `deepseek-f
 
 - 识别：SenseVoice Small int8（约 228 MB），中文 / 粤语 / 英语 / 日语 / 韩语，带标点。
 - 合成：Kokoro v1.1 中文 int8（约 185 MB），100 个中文音色，支持中英混读。系统语音仍然作为默认朗读（无需下载）。
-- 运行时：`sherpa-onnx-node` 1.13.8，在独立的 `utilityProcess` 中加载，避免推理卡住或拖垮主进程。
+- 运行时：`sherpa-onnx-node` 1.13.8，在独立的系统 Node 子进程中加载，避免推理卡住或拖垮主进程。
 - 未选用 Whisper.cpp / piper：SenseVoice 对中文标点更好，Kokoro 中文音色更多；sherpa-onnx 同时覆盖识别和合成，只引入一个原生模块。
 
 ### 完成内容
@@ -187,6 +187,12 @@ DeepSeek 已没有 `deepseek-chat` 模型，预设默认模型改为 `deepseek-f
 - 语音设置增加"本地模型 Kokoro / SenseVoice"；底部可下载、暂停续传、导入文件夹、删除。
 - 默认识别改为本地模型（未下载时会提示去下载）；默认朗读仍是系统语音。
 - 模型保存在 `%APPDATA%\marimo\models\`，不进 git。
+
+## 2026-10-14 · 本地 TTS：TTS settlement failed
+
+Kokoro 在 Electron 44 的 `utilityProcess` 和主进程里都能加载模型，但 `generateAsync()` 以 `TTS settlement failed` 失败，同步 `generate()` 则抛 `External buffers are not allowed`。同一套模型和配置在系统 Node 中可以合成。原因是 sherpa-onnx 把样本放在 N-API external ArrayBuffer 里，Electron 44 不允许这种缓冲进入 JS。
+
+处理：用系统 `node.exe` fork worker；样本在 Node 里拷贝并编码成 WAV，再以 base64 回传。识别仍走同一子进程，接口不变。
 
 ### 下一步（阶段 5）
 

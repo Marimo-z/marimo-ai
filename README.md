@@ -88,7 +88,7 @@ npm run dev        # 开发模式（渲染进程热更新；修改 electron/ 下
 - **语音输入**：聊天页点击麦克风开始录音，再点一次结束（最长 60 秒），识别出的文字会直接发送。默认使用本地模型 SenseVoice（离线，中文 / 粤语 / 英语 / 日语 / 韩语，带标点）；也可以改用 OpenAI 兼容的 `POST {Base URL}/audio/transcriptions`（预设：硅基流动 SenseVoice、OpenAI Whisper、Groq Whisper），需要单独的 API Key；DeepSeek 不提供语音接口。
 - 录音只在点击麦克风后进行，转换为 16 kHz 单声道 WAV。本地识别时录音不离开本机；选在线服务时由主进程上传给所配置的服务。录音都不保存到本机。
 - **本地模型**：语音设置页底部的"本地模型"中一键下载（逐个文件下载并校验 SHA-256，可暂停、断点续传；默认从国内镜像 hf-mirror.com 下载，也可改为 huggingface.co）。下载慢时，可以自行下载 Hugging Face 仓库 [`csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17`](https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17)（需要 `model.int8.onnx`、`tokens.txt`）和 [`csukuangfj/kokoro-int8-multi-lang-v1_1`](https://huggingface.co/csukuangfj/kokoro-int8-multi-lang-v1_1)，或 sherpa-onnx 发布页的同名压缩包解压后，点"导入文件夹"。
-- 本地模型由 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 在独立的后台进程中运行（CPU），首次使用需要加载几秒，5 分钟不用会自动释放内存；该进程崩溃不会影响桌宠。
+- 本地模型由 [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) 在独立的系统 Node 进程中运行（CPU）。开发时使用 PATH / `npm` 提供的 `node.exe`；Electron 本身不能接收 Kokoro 返回的音频缓冲。首次使用需要加载几秒，5 分钟不用会自动释放内存；该进程崩溃不会影响桌宠。
 - 权限被拒绝、没有麦克风、麦克风被占用、没有声音、网络失败、限流、超时都会给出提示。如果提示权限被拒绝，请在 Windows 设置 → 隐私和安全性 → 麦克风 中允许桌面应用访问麦克风。
 
 ### 数据存放位置
