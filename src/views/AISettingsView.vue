@@ -374,7 +374,7 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
             <el-form-item label="模型名称">
               <el-input
                 v-model="form.model"
-                placeholder="例如 deepseek-chat、qwen-plus"
+                placeholder="例如 deepseek-flash、qwen-plus"
                 clearable
               />
             </el-form-item>

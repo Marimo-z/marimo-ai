@@ -32,7 +32,7 @@ describe('checkBaseUrl', () => {
 describe('testConnection', () => {
   it('calls GET {baseUrl}/models with a bearer token and reports model availability', async () => {
     const fetchImpl = vi.fn(async () =>
-      jsonResponse(200, { data: [{ id: 'deepseek-chat' }, { id: 'other' }] })
+      jsonResponse(200, { data: [{ id: 'deepseek-flash' }, { id: 'other' }] })
     )
     const result = await testConnection(base, KEY, fetchImpl as unknown as typeof fetch)
 

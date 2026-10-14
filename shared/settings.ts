@@ -11,7 +11,7 @@ export interface AIProviderPreset {
 
 /** OpenAI-compatible endpoints. Model defaults are only suggestions and can be edited. */
 export const AI_PROVIDER_PRESETS = [
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-chat' },
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash' },
   {
     id: 'qwen',
     name: '通义千问（阿里云百炼）',
