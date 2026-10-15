@@ -8,6 +8,7 @@ const props = defineProps<{
   micActive: boolean
   micBlocked: boolean
   dockOpen: boolean
+  monitorOn: boolean
   /** Plays the close animation; the parent unmounts the menu when it finishes. */
   closing?: boolean
 }>()
@@ -16,16 +17,56 @@ const emit = defineEmits<{
   chat: []
   mic: []
   speaker: []
+  monitor: []
   panel: []
+  /** Pointer moved on the menu; the parent keeps it open a little longer. */
+  active: []
 }>()
 
 /** Degrees from the orb center: 0 is right, 90 is up. Kept above the orb so the dock can sit below. */
 const ITEMS = [
-  { id: 'chat', angle: 165 },
-  { id: 'mic', angle: 115 },
-  { id: 'speaker', angle: 65 },
-  { id: 'panel', angle: 15 }
+  { id: 'chat', angle: 168 },
+  { id: 'mic', angle: 129 },
+  { id: 'speaker', angle: 90 },
+  { id: 'monitor', angle: 51 },
+  { id: 'panel', angle: 12 }
 ] as const
+
+type ItemId = (typeof ITEMS)[number]['id']
+
+const micLabel = computed(() => {
+  if (props.micActive) return '结束语音对话'
+  if (props.micBlocked) return '正在朗读，未开启打断语音'
+  return '开始语音对话'
+})
+
+function label(id: ItemId): string {
+  if (id === 'chat') return '打开对话框'
+  if (id === 'mic') return micLabel.value
+  if (id === 'speaker') return props.autoSpeak ? '语音播报已开启' : '语音播报已关闭'
+  if (id === 'monitor') return props.monitorOn ? '关闭电脑监测' : '打开电脑监测'
+  return '打开控制面板'
+}
+
+function pressed(id: ItemId): boolean | undefined {
+  if (id === 'chat') return props.dockOpen
+  if (id === 'mic') return props.micActive
+  if (id === 'speaker') return props.autoSpeak
+  if (id === 'monitor') return props.monitorOn
+  return undefined
+}
+
+function lit(id: ItemId): boolean {
+  return pressed(id) === true
+}
+
+function choose(id: ItemId): void {
+  if (id === 'chat') emit('chat')
+  else if (id === 'mic') emit('mic')
+  else if (id === 'speaker') emit('speaker')
+  else if (id === 'monitor') emit('monitor')
+  else emit('panel')
+}
 
 /** Clearance between the pet's edge and a menu button, in unscaled px. */
 const MENU_GAP = 50
@@ -41,16 +82,10 @@ function place(angle: number, index: number): Record<string, string> {
     animationDelay: `${index * 45}ms`
   }
 }
-
-const micLabel = computed(() => {
-  if (props.micActive) return '结束语音对话'
-  if (props.micBlocked) return '正在朗读，未开启打断语音'
-  return '开始语音对话'
-})
 </script>
 
 <template>
-  <div class="ring" :class="{ 'is-closing': closing }">
+  <div class="ring" :class="{ 'is-closing': closing }" @pointermove="emit('active')">
     <button
       v-for="(item, index) in ITEMS"
       :key="item.id"
@@ -58,53 +93,14 @@ const micLabel = computed(() => {
       class="menu-btn"
       data-interactive
       :class="{
-        'is-on':
-          (item.id === 'chat' && dockOpen) ||
-          (item.id === 'mic' && micActive) ||
-          (item.id === 'speaker' && autoSpeak),
+        'is-on': lit(item.id),
         'is-blocked': item.id === 'mic' && micBlocked && !micActive
       }"
       :style="place(item.angle, index)"
-      :aria-pressed="
-        item.id === 'chat'
-          ? dockOpen
-          : item.id === 'mic'
-            ? micActive
-            : item.id === 'speaker'
-              ? autoSpeak
-              : undefined
-      "
-      :aria-label="
-        item.id === 'chat'
-          ? '打开对话框'
-          : item.id === 'mic'
-            ? micLabel
-            : item.id === 'speaker'
-              ? autoSpeak
-                ? '语音播报已开启'
-                : '语音播报已关闭'
-              : '打开控制面板'
-      "
-      :title="
-        item.id === 'chat'
-          ? '打开对话框'
-          : item.id === 'mic'
-            ? micLabel
-            : item.id === 'speaker'
-              ? autoSpeak
-                ? '语音播报已开启'
-                : '语音播报已关闭'
-              : '打开控制面板'
-      "
-      @click="
-        item.id === 'chat'
-          ? emit('chat')
-          : item.id === 'mic'
-            ? emit('mic')
-            : item.id === 'speaker'
-              ? emit('speaker')
-              : emit('panel')
-      "
+      :aria-pressed="pressed(item.id)"
+      :aria-label="label(item.id)"
+      :title="label(item.id)"
+      @click="choose(item.id)"
     >
       <svg v-if="item.id === 'chat'" viewBox="0 0 24 24" aria-hidden="true">
         <path
@@ -132,6 +128,22 @@ const micLabel = computed(() => {
           stroke-width="1.8"
           stroke-linecap="round"
           d="M15 9l6 6M21 9l-6 6"
+        />
+      </svg>
+      <svg v-else-if="item.id === 'monitor'" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          d="M4 16a8 8 0 1 1 16 0"
+        />
+        <path
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          d="M12 16l5-6"
         />
       </svg>
       <svg v-else viewBox="0 0 24 24" aria-hidden="true">

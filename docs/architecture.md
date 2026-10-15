@@ -48,6 +48,7 @@ electron/
       proactive.ts           主动搭话的触发判断（纯函数）
       voice/cloud.ts         OpenAI 兼容的 /audio/speech 与 /audio/transcriptions、WAV 校验
       voice/voice-service.ts 朗读与识别的调度：打断、状态、播放回报
+      system-monitor.ts      电脑监测：CPU / 内存差值，Windows GPU 计数器（仅开启时采样）
       games/game-service.ts  游戏事件：桌宠台词、playing 状态、战绩
       games/records.ts       战绩文件（最多 50 条，校验后写入）
       local-voice/catalog.ts 本地模型的仓库、文件清单与下载源
@@ -67,7 +68,7 @@ src/
   app/router/                面板路由与导航项
   app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts / voice.ts（对话与朗读状态的镜像）
   services/speech-recognition.ts 麦克风录音、转码为 WAV、识别器接口
-  components/pet/            PetFigure（圆球 PetOrb / 星球 PetPlanet）/ PetEyes / PetBubble
+  components/pet/            PetFigure（圆球 PetOrb / 星球 PetPlanet）/ PetEyes / PetBubble / PetMonitor / PetRadialMenu
   components/games/          对局外壳、战绩列表
   components/common/         SettingsCard / PageHeader / PetPreview
   composables/               光标追踪、手势、眨眼、交互区域、待机浮动、表单草稿、主题
@@ -178,7 +179,8 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 窗口为 280×340 DIP（乘以缩放比例），机器人在底部，上方空间留给气泡。Windows 上透明像素默认仍会拦截点击，因此：
 
 - 默认 `setIgnoreMouseEvents(true, { forward: true })`：点击穿透到下层窗口，但 mousemove 仍转发给页面。
-- 页面监听 mousemove。指针进入带 `data-interactive` 的元素（机器人主体、气泡、快捷菜单、对话框）时，通知主进程把窗口切换为可点击；离开后恢复穿透。菜单打开时，点菜单外的透明区域会关掉菜单，关掉后穿透恢复。
+- 页面监听 mousemove。指针进入带 `data-interactive` 的元素（机器人主体、气泡、快捷菜单、对话框、监测卡片）时，通知主进程把窗口切换为可点击；离开后恢复穿透。菜单打开时，点菜单外的透明区域会关掉菜单，关掉后穿透恢复。选中任一按钮会立刻收起；指针在菜单上移动会把 4 秒空闲计时重置，超时同样收起。
+- 电脑监测是会话开关，不进配置。开启后主进程每秒用 `os.cpus()` 差值算 CPU、用剩余内存算占用；Windows 上另起一个隐藏的 PowerShell，取 `GPU Engine` 里 `engtype_3D` 的最大值（接近任务管理器，不把各引擎相加）。没有计数器时 GPU 为 `null`，界面显示“—”。关闭或退出时停掉采样并结束该进程。
 - 用户开启"鼠标穿透模式"后调用 `setIgnoreMouseEvents(true)`，不再转发事件，渲染进程的请求也会被忽略；只能通过托盘恢复。
 
 ### 全局光标与眼睛追踪

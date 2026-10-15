@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } fr
 import { IPC } from '../../../shared/ipc'
 import { buildPetContextMenu, type MenuActions } from '../menus'
 import type { SettingsService } from '../services/settings-service'
+import type { SystemMonitor } from '../services/system-monitor'
 import type { VoiceService } from '../services/voice/voice-service'
 import type { PetWindow } from '../windows/pet-window'
 
@@ -9,7 +10,8 @@ export function registerPetIpc(
   pet: PetWindow,
   actions: MenuActions,
   voice: VoiceService,
-  settings: SettingsService
+  settings: SettingsService,
+  monitor: SystemMonitor
 ): void {
   const fromPet = (event: IpcMainEvent | IpcMainInvokeEvent): boolean =>
     pet.webContents !== null && event.sender === pet.webContents
@@ -48,6 +50,10 @@ export function registerPetIpc(
 
   ipcMain.on(IPC.petSetChatDock, (event, open: unknown) => {
     if (fromPet(event) && typeof open === 'boolean') pet.setChatDock(open)
+  })
+
+  ipcMain.on(IPC.petSetMonitor, (event, enabled: unknown) => {
+    if (fromPet(event) && typeof enabled === 'boolean') monitor.setEnabled(enabled)
   })
 
   ipcMain.on(IPC.petSpeechReport, (event, id: unknown, outcome: unknown, message: unknown) => {

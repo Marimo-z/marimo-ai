@@ -1,5 +1,6 @@
 import type { ChatSendResult, ChatState } from './chat'
 import type { GameEvent, GameRecord, PlayableGameId } from './game'
+import type { SystemSample } from './monitor'
 import type { PetEmotion, PetSettings } from './pet'
 import type { AIProfile, AppSettings, SettingsSection } from './settings'
 import type {
@@ -24,6 +25,8 @@ export const IPC = {
   petOpenPanel: 'pet:open-panel',
   petSetAutoSpeak: 'pet:set-auto-speak',
   petSetChatDock: 'pet:set-chat-dock',
+  petSetMonitor: 'pet:set-monitor',
+  petMonitor: 'pet:monitor',
   petSpeechReport: 'pet:speech-report',
 
   settingsGet: 'settings:get',
@@ -146,7 +149,10 @@ export interface PetBridge {
   setAutoSpeak(enabled: boolean): void
   /** Grows the pet window downward so the chat dock can be clicked. */
   setChatDock(open: boolean): void
+  /** Starts or stops CPU / GPU / memory samples for the pet. */
+  setMonitor(enabled: boolean): void
   reportSpeech(id: number, outcome: SpeechOutcome, message?: string): void
+  onMonitor(listener: (sample: SystemSample) => void): Unsubscribe
   onCursor(listener: (point: CursorPoint) => void): Unsubscribe
   onSettings(listener: (settings: PetViewSettings) => void): Unsubscribe
   onCommand(listener: (command: PetCommand) => void): Unsubscribe

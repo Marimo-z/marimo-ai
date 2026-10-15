@@ -1,4 +1,5 @@
 import type { CursorPoint, PetBridge, PetCommand, PetViewSettings } from '../../../shared/ipc'
+import type { SystemSample } from '../../../shared/monitor'
 import { DEFAULT_PET_SETTINGS } from '../../../shared/pet'
 
 /**
@@ -14,6 +15,8 @@ function createBrowserPreviewBridge(): PetBridge {
     interruptSpeech: false
   }
   const listeners = new Set<(next: PetViewSettings) => void>()
+  const monitorListeners = new Set<(sample: SystemSample) => void>()
+  let monitorTimer: ReturnType<typeof setInterval> | undefined
   const emit = (): void => listeners.forEach((listener) => listener({ ...settings }))
   return {
     getSettings: async () => ({ ...settings }),
@@ -24,6 +27,27 @@ function createBrowserPreviewBridge(): PetBridge {
       emit()
     },
     setChatDock: noop,
+    setMonitor(enabled) {
+      if (monitorTimer) clearInterval(monitorTimer)
+      monitorTimer = undefined
+      if (!enabled) return
+      let tick = 0
+      const push = (): void => {
+        tick += 1
+        const sample: SystemSample = {
+          cpu: 0.28 + 0.12 * Math.sin(tick / 2),
+          memory: 0.61,
+          gpu: 0.18 + 0.1 * Math.cos(tick / 3)
+        }
+        monitorListeners.forEach((listener) => listener(sample))
+      }
+      push()
+      monitorTimer = setInterval(push, 1000)
+    },
+    onMonitor(listener) {
+      monitorListeners.add(listener)
+      return () => monitorListeners.delete(listener)
+    },
     startDrag: noop,
     endDrag: noop,
     showContextMenu: () => console.info('[preview] context menu is native in Electron'),

@@ -3,6 +3,7 @@ import { storeToRefs } from 'pinia'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ChatErrorKind } from '../../../shared/chat'
 import type { PetCommand } from '../../../shared/ipc'
+import type { SystemSample } from '../../../shared/monitor'
 import { isPetEmotion, PET_CHAT_DOCK_HEIGHT, PET_ORB_BASE_SIZE } from '../../../shared/pet'
 import type { PetVoice, VoiceStatus } from '../../../shared/voice'
 import {
@@ -14,6 +15,7 @@ import {
 import PetBubble from '../../components/pet/PetBubble.vue'
 import PetChatDock from '../../components/pet/PetChatDock.vue'
 import PetFigure from '../../components/pet/PetFigure.vue'
+import PetMonitor from '../../components/pet/PetMonitor.vue'
 import PetRadialMenu from '../../components/pet/PetRadialMenu.vue'
 import { useBlink } from '../../composables/useBlink'
 import { useCursorTracking } from '../../composables/useCursorTracking'
@@ -40,10 +42,14 @@ const { busy, lastError } = storeToRefs(chat)
 
 const orbAnchor = ref<HTMLElement | null>(null)
 const pressTick = ref(0)
+const MENU_IDLE_MS = 4000
 const menuOpen = ref(false)
 const menuRendered = ref(false)
 const menuClosing = ref(false)
 const dockOpen = ref(false)
+const monitorOn = ref(false)
+const monitorSample = ref<SystemSample | null>(null)
+let menuIdle: ReturnType<typeof setTimeout> | undefined
 const liveTalk = ref(false)
 let menuTimer: ReturnType<typeof setTimeout> | undefined
 let voicePoll: ReturnType<typeof setInterval> | undefined
@@ -122,14 +128,25 @@ const gestures = usePetGestures(petBridge, {
   onDragChange: (dragging) => (store.isDragging = dragging)
 })
 
+function armMenuIdle(): void {
+  if (!menuOpen.value) return
+  if (menuIdle) clearTimeout(menuIdle)
+  menuIdle = setTimeout(() => {
+    if (menuOpen.value) closeMenu()
+  }, MENU_IDLE_MS)
+}
+
 function openMenu(): void {
   if (menuTimer) clearTimeout(menuTimer)
   menuClosing.value = false
   menuRendered.value = true
   menuOpen.value = true
+  armMenuIdle()
 }
 
 function closeMenu(): void {
+  if (menuIdle) clearTimeout(menuIdle)
+  menuIdle = undefined
   menuOpen.value = false
   if (!menuRendered.value) return
   menuClosing.value = true
@@ -137,6 +154,11 @@ function closeMenu(): void {
     menuRendered.value = false
     menuClosing.value = false
   }, 190)
+}
+
+function chooseMenu(action: () => void): void {
+  action()
+  closeMenu()
 }
 
 function stopVoicePoll(): void {
@@ -200,6 +222,16 @@ function toggleDock(): void {
 
 function toggleSpeaker(): void {
   petBridge.setAutoSpeak(!settings.value.autoSpeak)
+}
+
+function toggleMonitor(): void {
+  monitorOn.value = !monitorOn.value
+  if (!monitorOn.value) monitorSample.value = null
+  petBridge.setMonitor(monitorOn.value)
+}
+
+function openControlPanel(): void {
+  petBridge.openPanel()
 }
 
 watch(dockOpen, (open) => {
@@ -300,7 +332,10 @@ function handleCommand(command: PetCommand): void {
 const unsubscribers = [
   petBridge.onSettings((next) => store.applySettings(next)),
   petBridge.onCommand(handleCommand),
-  voiceBridge.onChanged((next) => (voiceStatus.value = next.status))
+  voiceBridge.onChanged((next) => (voiceStatus.value = next.status)),
+  petBridge.onMonitor((next) => {
+    if (monitorOn.value) monitorSample.value = next
+  })
 ]
 let greetingTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -316,6 +351,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   clearTimeout(greetingTimer)
   clearTimeout(menuTimer)
+  clearTimeout(menuIdle)
+  if (monitorOn.value) petBridge.setMonitor(false)
   liveTalk.value = false
   stopVoicePoll()
   voiceInput.cancel()
@@ -341,6 +378,7 @@ onBeforeUnmount(() => {
       @click="closeMenu"
     />
     <div class="bubble-area">
+      <PetMonitor v-if="monitorOn" :sample="monitorSample" />
       <Transition name="bubble">
         <PetBubble
           v-if="dialogue && !settings.clickThrough"
@@ -364,10 +402,13 @@ onBeforeUnmount(() => {
         :mic-active="micActive"
         :mic-blocked="micBlocked"
         :dock-open="dockOpen"
-        @chat="toggleDock"
-        @mic="toggleMic"
-        @speaker="toggleSpeaker"
-        @panel="petBridge.openPanel()"
+        :monitor-on="monitorOn"
+        @active="armMenuIdle"
+        @chat="chooseMenu(toggleDock)"
+        @mic="chooseMenu(() => void toggleMic())"
+        @speaker="chooseMenu(toggleSpeaker)"
+        @monitor="chooseMenu(toggleMonitor)"
+        @panel="chooseMenu(openControlPanel)"
       />
       <PetFigure
         :skin="settings.skin === 'planet' ? 'planet' : 'orb'"
@@ -420,8 +461,9 @@ onBeforeUnmount(() => {
   z-index: 3;
   flex: 1;
   display: flex;
-  align-items: flex-end;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
   width: 100%;
   min-height: 0;
   padding: 0 8px calc(10px * var(--pet-scale));
@@ -434,7 +476,9 @@ onBeforeUnmount(() => {
 }
 
 .bubble-area :deep(.bubble),
-.bubble-area :deep(.bubble *) {
+.bubble-area :deep(.bubble *),
+.bubble-area :deep(.meter),
+.bubble-area :deep(.meter *) {
   pointer-events: auto;
 }
 

@@ -2,6 +2,7 @@ import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
 import type { ChatState } from '../../../shared/chat'
 import { IPC, type PetCommand, type PetViewSettings } from '../../../shared/ipc'
+import type { SystemSample } from '../../../shared/monitor'
 import { PET_CHAT_DOCK_HEIGHT, petWindowSize, type PetSettings } from '../../../shared/pet'
 import type { VoiceState } from '../../../shared/voice'
 import type { AppSettings } from '../../../shared/settings'
@@ -201,6 +202,10 @@ export class PetWindow {
 
   notifyVoice(state: VoiceState): void {
     this.win?.webContents.send(IPC.voiceChanged, state)
+  }
+
+  notifyMonitor(sample: SystemSample): void {
+    this.win?.webContents.send(IPC.petMonitor, sample)
   }
 
   /**

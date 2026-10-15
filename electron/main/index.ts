@@ -15,6 +15,7 @@ import { aiKeyName, SecureStorage, voiceKeyName } from './services/secure-storag
 import { SettingsService } from './services/settings-service'
 import { GameService } from './services/games/game-service'
 import { GameRecordStore } from './services/games/records'
+import { SystemMonitor } from './services/system-monitor'
 import { VoiceService } from './services/voice/voice-service'
 import { createTray } from './tray'
 import { PetWindow } from './windows/pet-window'
@@ -133,7 +134,8 @@ if (!app.requestSingleInstanceLock()) {
       panel.broadcast(next)
     })
 
-    registerPetIpc(pet, actions, voice, settings)
+    const monitor = new SystemMonitor((sample) => pet.notifyMonitor(sample))
+    registerPetIpc(pet, actions, voice, settings, monitor)
     registerSettingsIpc({ settings, secrets, pet, panel, chat, voice, models, engine, games })
     pet.create()
     tray = createTray(pet, actions)
@@ -147,6 +149,7 @@ if (!app.requestSingleInstanceLock()) {
       chat.cancel()
       games.setPlaying(null)
       voice.dispose()
+      monitor.stop()
       models.cancelAll()
       engine.stop()
       pet.prepareQuit()
