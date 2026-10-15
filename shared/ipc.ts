@@ -22,6 +22,8 @@ export const IPC = {
   petDragEnd: 'pet:drag-end',
   petShowContextMenu: 'pet:show-context-menu',
   petOpenPanel: 'pet:open-panel',
+  petSetAutoSpeak: 'pet:set-auto-speak',
+  petSetChatDock: 'pet:set-chat-dock',
   petSpeechReport: 'pet:speech-report',
 
   settingsGet: 'settings:get',
@@ -75,9 +77,11 @@ export type PetCommand =
   | { type: 'stop-speech' }
   | { type: 'play'; playing: boolean; game?: PlayableGameId }
 
-/** What the pet window needs: its own settings plus the persona name for the greeting. */
+/** What the pet window needs: its own settings, the persona name, and the voice toggles it shows. */
 export interface PetViewSettings extends PetSettings {
   petName: string
+  autoSpeak: boolean
+  interruptSpeech: boolean
 }
 
 export type Unsubscribe = () => void
@@ -129,6 +133,10 @@ export interface PetBridge {
   endDrag(): void
   showContextMenu(): void
   openPanel(): void
+  /** Toggles the existing auto-speak setting. Does not create a second preference. */
+  setAutoSpeak(enabled: boolean): void
+  /** Grows the pet window downward so the chat dock can be clicked. */
+  setChatDock(open: boolean): void
   reportSpeech(id: number, outcome: SpeechOutcome, message?: string): void
   onCursor(listener: (point: CursorPoint) => void): Unsubscribe
   onSettings(listener: (settings: PetViewSettings) => void): Unsubscribe

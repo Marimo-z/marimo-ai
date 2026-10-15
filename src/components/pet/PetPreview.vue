@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import type { PetEmotion } from '../../../shared/pet'
+import type { PetEmotion, PetSkin } from '../../../shared/pet'
 import { useBlink } from '../../composables/useBlink'
 import { computeEyeOffset, DEFAULT_EYE_TRACKING, type Vec2 } from '../../utils/eye-tracking'
 import { resolvePetAppearance } from '../../utils/pet-appearance'
-import PetOrb from './PetOrb.vue'
+import PetFigure from './PetFigure.vue'
 
 /** In-page pet used by the control panel; eyes follow the mouse inside this window only. */
-const props = withDefaults(defineProps<{ size?: number; idleAnimation?: boolean }>(), {
-  size: 120,
-  idleAnimation: true
-})
+const props = withDefaults(
+  defineProps<{ size?: number; idleAnimation?: boolean; skin?: PetSkin }>(),
+  {
+    size: 120,
+    idleAnimation: true,
+    skin: 'orb'
+  }
+)
 
 const anchor = ref<HTMLElement | null>(null)
 const emotion = ref<PetEmotion>('idle')
@@ -76,7 +80,8 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="anchor" class="preview" :style="{ width: `${size}px`, height: `${size}px` }">
-    <PetOrb
+    <PetFigure
+      :skin="skin"
       :appearance="appearance"
       :eye-offset="shownOffset"
       :blinking="blinking"
@@ -90,9 +95,11 @@ onBeforeUnmount(() => {
 <style scoped>
 .preview {
   flex: none;
+  overflow: hidden;
 }
 
-.preview :deep(.orb-svg) {
+.preview :deep(.orb-svg),
+.preview :deep(.planet-svg) {
   cursor: pointer;
 }
 </style>

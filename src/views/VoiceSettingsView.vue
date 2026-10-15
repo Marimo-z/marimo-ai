@@ -20,6 +20,7 @@ import {
 import { useSettingsStore } from '../app/stores/settings'
 import { useVoiceStore } from '../app/stores/voice'
 import PageHeader from '../components/common/PageHeader.vue'
+import SettingSlider from '../components/common/SettingSlider.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
 import LocalModelItem from '../components/voice/LocalModelItem.vue'
 import VoiceKeyField from '../components/voice/VoiceKeyField.vue'
@@ -156,7 +157,7 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page">
-    <PageHeader title="语音设置" description="朗读 AI 回复，以及在聊天页用麦克风说话">
+    <PageHeader title="语音设置" description="让桌宠开口，也可以用麦克风和它一直聊。">
       <el-button @click="store.reset('voice')">恢复本页默认</el-button>
     </PageHeader>
 
@@ -279,39 +280,52 @@ onBeforeUnmount(() => {
             :model-value="voice.autoSpeak"
             @change="(v) => set({ autoSpeak: v as boolean })"
           />
-          <span class="hint">用语音输入发送的消息，回复总会朗读。免打扰模式下不朗读。</span>
+          <span class="hint">打字的回复要打开它才会读。用语音说的话，它总会读出来。勿扰时不读。</span>
+        </el-form-item>
+        <el-form-item label="打断语音" class="switch-item">
+          <el-switch
+            :model-value="voice.interruptSpeech"
+            @change="(v) => set({ interruptSpeech: v as boolean })"
+          />
+          <span class="hint">默认关着。关着时先听它说完；打开后，你可以随时插话。</span>
         </el-form-item>
       </el-form>
     </SettingsCard>
 
-    <SettingsCard title="声音参数">
-      <el-form label-position="left" label-width="96px" @submit.prevent>
-        <el-form-item :label="`语速 ${voice.rate.toFixed(1)}x`">
-          <el-slider
+    <SettingsCard title="声音参数" description="拖动时数字会跟着变，松开后才保存。">
+      <el-form label-position="top" @submit.prevent>
+        <el-form-item>
+          <SettingSlider
+            label="语速"
             :model-value="voice.rate"
             :min="0.5"
             :max="2"
             :step="0.1"
-            @change="(v) => set({ rate: v as number })"
+            :format="(v) => `${v.toFixed(1)}x`"
+            @commit="(v) => set({ rate: v })"
           />
         </el-form-item>
-        <el-form-item :label="`音量 ${Math.round(voice.volume * 100)}%`">
-          <el-slider
+        <el-form-item>
+          <SettingSlider
+            label="音量"
             :model-value="voice.volume"
             :min="0"
             :max="1"
             :step="0.05"
-            @change="(v) => set({ volume: v as number })"
+            :format="(v) => `${Math.round(v * 100)}%`"
+            @commit="(v) => set({ volume: v })"
           />
         </el-form-item>
-        <el-form-item :label="`音调 ${voice.pitch.toFixed(1)}`">
-          <el-slider
+        <el-form-item>
+          <SettingSlider
+            label="音调"
             :model-value="voice.pitch"
             :min="0.5"
             :max="2"
             :step="0.1"
             :disabled="voice.ttsProvider !== 'system'"
-            @change="(v) => set({ pitch: v as number })"
+            :format="(v) => v.toFixed(1)"
+            @commit="(v) => set({ pitch: v })"
           />
         </el-form-item>
         <p v-if="voice.ttsProvider !== 'system'" class="hint">音调只对 Windows 系统语音生效。</p>
@@ -342,7 +356,7 @@ onBeforeUnmount(() => {
 
     <SettingsCard
       title="语音识别（语音输入）"
-      description="只在你点击麦克风后录音；录音只发送给下面配置的识别服务，不保存到本机"
+      description="桌宠的麦克风会一直听，停顿大约两秒半就发出去。录音只发给识别服务，不留在本机。"
     >
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="服务类型">

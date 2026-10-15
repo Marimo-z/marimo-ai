@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import type { GameDifficulty, GameSettings } from '../../shared/settings'
 import { useSettingsStore } from '../app/stores/settings'
 import PageHeader from '../components/common/PageHeader.vue'
+import SettingSlider from '../components/common/SettingSlider.vue'
 import SettingsCard from '../components/common/SettingsCard.vue'
 import RecordList from '../components/games/RecordList.vue'
 import { useGameRecords } from '../composables/useGameRecords'
@@ -44,12 +45,12 @@ const DIFFICULTY_LABELS: Record<GameDifficulty, string> = {
   normal: '普通',
   hard: '困难'
 }
-const TAUNT_MARKS = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
+const TAUNT_MARKS: Record<number, string> = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
 </script>
 
 <template>
   <div class="page">
-    <PageHeader title="游戏中心" description="和桌宠下棋，它会根据战况开心、得意或生气" />
+    <PageHeader title="游戏中心" description="和它下一局。它会跟着棋局高兴、得意或生气。" />
 
     <div class="grid-3">
       <article v-for="game in GAMES" :key="game.id" class="game-card">
@@ -99,9 +100,10 @@ const TAUNT_MARKS = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
             <el-radio-button value="high">多</el-radio-button>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="嘲讽强度">
-          <el-slider
+        <el-form-item>
+          <SettingSlider
             class="taunt"
+            label="嘲讽强度"
             :model-value="games.tauntLevel"
             :min="0"
             :max="3"
@@ -109,7 +111,8 @@ const TAUNT_MARKS = { 0: '温柔', 1: '调侃', 2: '毒舌', 3: '拉满' }
             :marks="TAUNT_MARKS"
             show-stops
             :disabled="!games.dialogueEnabled"
-            @change="(v) => set({ tauntLevel: v as number })"
+            :format="(v) => TAUNT_MARKS[v] ?? String(v)"
+            @commit="(v) => set({ tauntLevel: v })"
           />
         </el-form-item>
       </el-form>

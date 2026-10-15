@@ -62,15 +62,27 @@ export function registerSettingsIpc({
   engine,
   games
 }: Deps): void {
-  /** Registers a handler that only the control panel may call. */
+  /** Chat and transcription the pet dock may use. Secrets and other settings stay on the panel. */
+  const PET_CHANNELS = new Set<string>([
+    IPC.chatGetState,
+    IPC.chatSend,
+    IPC.chatCancel,
+    IPC.voiceGetState,
+    IPC.voiceStop,
+    IPC.voiceTranscribe
+  ])
+
+  /** Registers a handler. The control panel may call all of them; the pet only the set above. */
   const handle = <A extends unknown[], R>(
     channel: string,
     handler: (...args: A) => R | Promise<R>
   ): void => {
     ipcMain.handle(channel, (event: IpcMainInvokeEvent, ...args: unknown[]) => {
-      if (panel.webContents === null || event.sender !== panel.webContents) {
-        throw new Error('Forbidden')
-      }
+      const sender = event.sender
+      const fromPanel = panel.webContents !== null && sender === panel.webContents
+      const fromPet =
+        PET_CHANNELS.has(channel) && pet.webContents !== null && sender === pet.webContents
+      if (!fromPanel && !fromPet) throw new Error('Forbidden')
       return handler(...(args as A))
     })
   }

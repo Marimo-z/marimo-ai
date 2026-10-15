@@ -39,6 +39,12 @@ describe('parseConfig', () => {
     expect(config.persona.traits).toEqual(DEFAULT_SETTINGS.persona.traits)
     expect(config.persona.name).toBe('小蓝')
     expect(config.appearance.theme).toBe('system')
+    expect(config.pet.skin).toBe('orb')
+  })
+
+  it('keeps a known pet skin and repairs an unknown one', () => {
+    expect(parseConfig({ pet: { skin: 'planet' } }).pet.skin).toBe('planet')
+    expect(parseConfig({ pet: { skin: 'dragon' } }).pet.skin).toBe('orb')
   })
 
   it('migrates the single-profile AI format into a profile list', () => {

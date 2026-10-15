@@ -12,7 +12,12 @@ export interface Dialogue {
 const DEFAULT_EMOTION_MS = 2500
 
 export const usePetStore = defineStore('pet', () => {
-  const settings = ref<PetViewSettings>({ ...DEFAULT_PET_SETTINGS, petName: 'Marimo' })
+  const settings = ref<PetViewSettings>({
+    ...DEFAULT_PET_SETTINGS,
+    petName: 'Marimo',
+    autoSpeak: false,
+    interruptSpeech: false
+  })
   const emotion = ref<PetEmotion>('idle')
   const isDragging = ref(false)
   const isSpeaking = ref(false)

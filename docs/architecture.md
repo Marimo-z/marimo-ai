@@ -67,7 +67,7 @@ src/
   app/router/                面板路由与导航项
   app/stores/                pet.ts（桌宠状态）、settings.ts（主进程设置的镜像）、chat.ts / voice.ts（对话与朗读状态的镜像）
   services/speech-recognition.ts 麦克风录音、转码为 WAV、识别器接口
-  components/pet/            PetOrb / PetEyes / PetBubble
+  components/pet/            PetFigure（圆球 PetOrb / 星球 PetPlanet）/ PetEyes / PetBubble
   components/games/          对局外壳、战绩列表
   components/common/         SettingsCard / PageHeader / PetPreview
   composables/               光标追踪、手势、眨眼、交互区域、待机浮动、表单草稿、主题
@@ -146,7 +146,7 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 
 - 同一时间只有一句话。每句话有递增的 `id`，新的一句或"停止"都会打断上一句（中止合成请求，或通知桌宠停止播放）。桌宠播放结束或出错时用 `pet:speech-report` 回报 `id`，过期的回报被忽略；如果一直没有回报（例如窗口重载），5 分钟后自动复位。
 - 在线合成失败时，回复仍以普通气泡显示，并把错误写入 `VoiceState.lastError`，在聊天页和语音设置页显示。
-- 朗读条件：`reply.speech && (语音输入 || autoSpeak)`，且未开启免打扰；开启免打扰时会停止正在进行的朗读。
+- 朗读条件：`reply.speech && (语音输入 || autoSpeak)`，且未开启免打扰；开启免打扰时会停止正在进行的朗读。语音设置里的「打断语音」默认关闭：关闭时麦克风不会在朗读过程中把这句话停掉，打开后语音输入才会打断当前朗读。
 - 桌宠在朗读期间保持气泡（`PetBubble` 的 `hold`），进入 talking 状态；朗读期间不会被单击时的本地台词覆盖，保证气泡与正在朗读的内容一致。
 
 语音服务的 API Key 存为 `voice:tts` 和 `voice:asr`，与 AI 配置的密钥分开，同样只在主进程解密。
@@ -177,7 +177,7 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 窗口为 280×340 DIP（乘以缩放比例），机器人在底部，上方空间留给气泡。Windows 上透明像素默认仍会拦截点击，因此：
 
 - 默认 `setIgnoreMouseEvents(true, { forward: true })`：点击穿透到下层窗口，但 mousemove 仍转发给页面。
-- 页面监听 mousemove。指针进入带 `data-interactive` 的元素（机器人主体、气泡）时，通知主进程把窗口切换为可点击；离开后恢复穿透。
+- 页面监听 mousemove。指针进入带 `data-interactive` 的元素（机器人主体、气泡、快捷菜单、对话框）时，通知主进程把窗口切换为可点击；离开后恢复穿透。菜单打开时，点菜单外的透明区域会关掉菜单，关掉后穿透恢复。
 - 用户开启"鼠标穿透模式"后调用 `setIgnoreMouseEvents(true)`，不再转发事件，渲染进程的请求也会被忽略；只能通过托盘恢复。
 
 ### 全局光标与眼睛追踪
@@ -266,7 +266,7 @@ Vue 的响应式对象是 Proxy，无法通过 `structuredClone` 或 IPC 的结�
 
 - 三种模式：系统 / 浅色 / 深色，保存在 `appearance.theme`。
 - 主进程设置 `nativeTheme.themeSource`，使原生菜单、标题栏覆盖层按钮（`titleBarOverlay`）跟随主题；渲染进程根据模式（"系统"时读取 `prefers-color-scheme`）切换 `html.dark`，启用 Element Plus 的暗色变量。
-- 配色：浅色为蓝白（背景 `#f4f6fb`，强调色 `#4f68b0`，即 logo 的蓝色）；深色为深蓝黑（背景 `#101217`，强调色提亮为 `#7d93e0` 以保证对比度）。
+- 配色：浅色是晨空蓝（背景 `#e7eef6`，卡片偏暖白，强调色 `#4f68b0`，即 logo 的蓝色，细金线来自星球环）；深色是夜空（背景 `#090d16`，强调色 `#8eb0ff`）。窗口描边色在 `shared/theme.ts` 的 `PANEL_CHROME`，必须和 `panel.css` 的标题栏一致。
 - 没有采用"橙黑"方案：桌宠本体是蓝色，橙色强调色会让面板和桌宠看起来像两个产品；深色主题下继续使用蓝色强调色，桌宠预览也更协调。
 
 ### 控制面板窗口

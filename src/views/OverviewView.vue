@@ -82,10 +82,15 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <PageHeader title="总览" description="桌宠状态与常用操作" />
+    <PageHeader title="总览" description="它现在怎么样，以及你常做的几件事。" />
 
     <section class="hero">
-      <PetPreview ref="preview" :size="128" :idle-animation="s.pet.idleAnimation" />
+      <PetPreview
+        ref="preview"
+        :size="128"
+        :skin="s.pet.skin"
+        :idle-animation="s.pet.idleAnimation"
+      />
       <div class="hero-body">
         <h2 class="hero-name">{{ s.persona.name }}</h2>
         <p class="hero-traits">
@@ -129,6 +134,8 @@ onMounted(async () => {
           <dd>{{ TTS_PROVIDER_LABELS[s.voice.ttsProvider] }}</dd>
           <dt>自动朗读</dt>
           <dd>{{ s.voice.autoSpeak ? '开启' : '关闭' }}</dd>
+          <dt>打断语音</dt>
+          <dd>{{ s.voice.interruptSpeech ? '开启' : '关闭' }}</dd>
         </dl>
         <el-button class="card-link" link type="primary" @click="router.push('/voice')">
           前往配置
@@ -196,7 +203,9 @@ onMounted(async () => {
   border: 1px solid var(--mo-border);
   border-radius: var(--mo-radius);
   background:
-    radial-gradient(120% 140% at 0% 0%, var(--mo-accent-soft), transparent 60%), var(--mo-bg-card);
+    radial-gradient(90% 140% at 0% 0%, rgba(198, 161, 90, 0.16), transparent 46%),
+    radial-gradient(120% 140% at 0% 100%, var(--mo-accent-soft), transparent 58%),
+    var(--mo-bg-card);
   box-shadow: var(--mo-shadow);
 }
 

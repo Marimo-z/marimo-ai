@@ -45,7 +45,10 @@ if (!app.requestSingleInstanceLock()) {
 
     const pet = new PetWindow(store, settings)
     const panel = new SettingsWindow()
-    restrictPermissions(() => panel.webContents)
+    restrictPermissions(
+      () => panel.webContents,
+      () => pet.webContents
+    )
     const models = new ModelStore(join(userData, 'models'), (statuses) =>
       panel.broadcastModels(statuses)
     )
@@ -54,7 +57,10 @@ if (!app.requestSingleInstanceLock()) {
       getSettings: () => settings.get(),
       getKey: (kind) => secrets.get(voiceKeyName(kind)),
       onPet: (command) => pet.sendCommand(command),
-      onState: (state) => panel.broadcastVoice(state),
+      onState: (state) => {
+        panel.broadcastVoice(state)
+        pet.notifyVoice(state)
+      },
       local: {
         isReady: (kind) => models.isReady(kind === 'asr' ? 'sensevoice' : 'kokoro'),
         transcribe: (samples, sampleRate, signal) =>
@@ -68,7 +74,10 @@ if (!app.requestSingleInstanceLock()) {
       getKey: (profileId) => secrets.get(aiKeyName(profileId)),
       createProvider: (profile, key) => createProvider(profile, key),
       history: new ChatHistoryStore(join(userData, 'chat-history.json')),
-      onState: (state) => panel.broadcastChat(state),
+      onState: (state) => {
+        panel.broadcastChat(state)
+        pet.notifyChat(state)
+      },
       onPet: (command) => pet.sendCommand(command),
       presentReply: (reply, readAloud) => void voice.present(reply.text, reply.emotion, readAloud)
     })
@@ -118,7 +127,7 @@ if (!app.requestSingleInstanceLock()) {
       panel.broadcast(next)
     })
 
-    registerPetIpc(pet, actions, voice)
+    registerPetIpc(pet, actions, voice, settings)
     registerSettingsIpc({ settings, secrets, pet, panel, chat, voice, models, engine, games })
     pet.create()
     tray = createTray(pet, actions)

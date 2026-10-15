@@ -1,6 +1,6 @@
 import { onBeforeUnmount, ref, type Ref } from 'vue'
 import { voiceBridge } from '../app/settings/bridge'
-import { RecordingRecognizer } from '../services/speech-recognition'
+import { RecordingRecognizer, type RecognitionErrorKind } from '../services/speech-recognition'
 
 export type VoiceInputPhase = 'idle' | 'recording' | 'transcribing'
 
@@ -9,6 +9,7 @@ export interface VoiceInput {
   level: Ref<number>
   elapsedMs: Ref<number>
   error: Ref<string | null>
+  errorKind: Ref<RecognitionErrorKind | null>
   start(): Promise<void>
   stop(): Promise<void>
   cancel(): void
@@ -20,6 +21,7 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
   const level = ref(0)
   const elapsedMs = ref(0)
   const error = ref<string | null>(null)
+  const errorKind = ref<RecognitionErrorKind | null>(null)
   let clock: ReturnType<typeof setInterval> | null = null
 
   const recognizer = new RecordingRecognizer((wav) => voiceBridge.transcribe(wav), {
@@ -32,6 +34,7 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
   }
   recognizer.onError = (failure) => {
     phase.value = 'idle'
+    errorKind.value = failure.kind
     error.value = failure.message
   }
 
@@ -44,6 +47,7 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
   async function start(): Promise<void> {
     if (phase.value !== 'idle') return
     error.value = null
+    errorKind.value = null
     phase.value = 'recording'
     await recognizer.start()
     if (!recognizer.recording) {
@@ -70,5 +74,5 @@ export function useVoiceInput(onText: (text: string) => void): VoiceInput {
   }
 
   onBeforeUnmount(cancel)
-  return { phase, level, elapsedMs, error, start, stop, cancel }
+  return { phase, level, elapsedMs, error, errorKind, start, stop, cancel }
 }

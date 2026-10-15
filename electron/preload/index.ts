@@ -17,6 +17,8 @@ const bridge: MarimoBridge = {
     endDrag: () => ipcRenderer.send(IPC.petDragEnd),
     showContextMenu: () => ipcRenderer.send(IPC.petShowContextMenu),
     openPanel: () => ipcRenderer.send(IPC.petOpenPanel),
+    setAutoSpeak: (enabled) => ipcRenderer.send(IPC.petSetAutoSpeak, enabled === true),
+    setChatDock: (open) => ipcRenderer.send(IPC.petSetChatDock, open === true),
     reportSpeech: (id, outcome, message) =>
       ipcRenderer.send(IPC.petSpeechReport, id, outcome, message),
     onCursor: (listener) => subscribe(IPC.petCursor, listener),

@@ -40,7 +40,7 @@ async function onSave(): Promise<void> {
 
 <template>
   <div class="page">
-    <PageHeader title="人设与记忆" description="结构化保存，由 AI 服务层组装成提示词">
+    <PageHeader title="人设与记忆" description="名字、性格和记忆。聊天时会带上这些。">
       <el-button :disabled="!dirty" @click="revert">撤销修改</el-button>
       <el-button type="primary" :disabled="!dirty" :loading="saving" @click="onSave">
         保存
@@ -98,7 +98,7 @@ async function onSave(): Promise<void> {
 
     <SettingsCard
       title="互动与记忆"
-      description="主动搭话会定期请求模型，会消耗少量额度；勿扰、鼠标穿透或桌宠隐藏时不会搭话"
+      description="它会隔一会儿主动找你，每次都会用一点额度。勿扰、鼠标穿透或藏起来时不会。"
     >
       <el-form label-position="left" label-width="160px" @submit.prevent>
         <el-form-item label="允许主动发起对话">

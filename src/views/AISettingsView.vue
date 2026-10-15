@@ -254,7 +254,7 @@ function itemStatus(profile: AIProfile): { type: 'success' | 'warning' | 'danger
   <div class="page">
     <PageHeader
       title="AI 配置"
-      description="可添加多个模型服务（OpenAI 兼容接口），启用其中一个用于聊天"
+      description="接上一个能聊天的模型。可以存好几个，同时只启用一个。"
     >
       <el-dropdown trigger="click" :disabled="atLimit" @command="add">
         <el-button type="primary" :icon="Plus" :disabled="atLimit">添加 AI</el-button>

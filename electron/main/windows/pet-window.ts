@@ -1,7 +1,9 @@
 import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'node:path'
+import type { ChatState } from '../../../shared/chat'
 import { IPC, type PetCommand, type PetViewSettings } from '../../../shared/ipc'
-import { petWindowSize, type PetSettings } from '../../../shared/pet'
+import { PET_CHAT_DOCK_HEIGHT, petWindowSize, type PetSettings } from '../../../shared/pet'
+import type { VoiceState } from '../../../shared/voice'
 import type { AppSettings } from '../../../shared/settings'
 import type { ConfigStore } from '../services/config-store'
 import { PointerTracker } from '../services/pointer-tracker'
@@ -22,6 +24,9 @@ export class PetWindow {
   private win: BrowserWindow | null = null
   private interactive = false
   private allowClose = false
+  private chatDock = false
+  /** Top-left before the dock opened, updated if the user drags while it is open. */
+  private dockAnchor: Point | null = null
   private dragOffset: Point | null = null
   private dragTimer: NodeJS.Timeout | null = null
   private readonly tracker = new PointerTracker(CURSOR_POLL_MS, (p) => this.sendCursor(p))
@@ -40,7 +45,12 @@ export class PetWindow {
 
   get viewSettings(): PetViewSettings {
     const config = this.store.get()
-    return { ...config.pet, petName: config.persona.name }
+    return {
+      ...config.pet,
+      petName: config.persona.name,
+      autoSpeak: config.voice.autoSpeak,
+      interruptSpeech: config.voice.interruptSpeech
+    }
   }
 
   get webContents(): Electron.WebContents | null {
@@ -58,7 +68,7 @@ export class PetWindow {
 
   create(): void {
     const settings = this.settings
-    const size = petWindowSize(settings.scale)
+    const size = this.windowSize()
     const saved = this.store.get().petWindowPosition
     const areas = workAreas()
     const position = saved
@@ -151,7 +161,7 @@ export class PetWindow {
   resetPosition(): void {
     const win = this.win
     if (!win) return
-    const size = petWindowSize(this.settings.scale)
+    const size = this.windowSize()
     win.setBounds({ ...defaultPosition(workAreas()[0], size), ...size })
     this.savePosition()
     this.tracker.invalidate()
@@ -165,7 +175,7 @@ export class PetWindow {
 
     if (win) {
       if (next.alwaysOnTop !== previous.alwaysOnTop) win.setAlwaysOnTop(next.alwaysOnTop)
-      if (next.scale !== previous.scale) this.resizeKeepingBottomCenter(next.scale)
+      if (next.scale !== previous.scale) this.resizeKeepingOrb(previous.scale)
       if (next.clickThrough !== previous.clickThrough) {
         this.interactive = false
         this.applyMouseMode()
@@ -183,6 +193,37 @@ export class PetWindow {
 
   sendCommand(command: PetCommand): void {
     this.win?.webContents.send(IPC.petCommand, command)
+  }
+
+  notifyChat(state: ChatState): void {
+    this.win?.webContents.send(IPC.chatChanged, state)
+  }
+
+  notifyVoice(state: VoiceState): void {
+    this.win?.webContents.send(IPC.voiceChanged, state)
+  }
+
+  /**
+   * Opens space under the orb for the chat dock. The orb stays put; closing the dock
+   * returns the window to the position it had before (or where it was dragged).
+   */
+  setChatDock(open: boolean): void {
+    const win = this.win
+    if (!win || this.chatDock === open) return
+    const bounds = win.getBounds()
+    if (open) {
+      this.dockAnchor = { x: bounds.x, y: bounds.y }
+      this.chatDock = true
+      const size = petWindowSize(this.settings.scale, true)
+      win.setBounds(ensureVisible({ x: bounds.x, y: bounds.y, ...size }, workAreas()))
+      return
+    }
+    this.chatDock = false
+    const anchor = this.dockAnchor ?? { x: bounds.x, y: bounds.y }
+    this.dockAnchor = null
+    const size = petWindowSize(this.settings.scale, false)
+    win.setBounds(ensureVisible({ ...anchor, ...size }, workAreas()))
+    this.savePosition()
   }
 
   startDrag(): void {
@@ -212,7 +253,7 @@ export class PetWindow {
     const win = this.win
     if (!win || !this.dragOffset) return
     const cursor = screen.getCursorScreenPoint()
-    const size = petWindowSize(this.settings.scale)
+    const size = this.windowSize()
     // Always pass an explicit size: moving a transparent window across monitors with
     // different DPI scaling otherwise makes Windows grow or shrink it.
     win.setBounds({
@@ -221,6 +262,10 @@ export class PetWindow {
       width: size.width,
       height: size.height
     })
+    if (this.chatDock) {
+      const [x, y] = win.getPosition()
+      this.dockAnchor = { x, y }
+    }
   }
 
   private applyMouseMode(): void {
@@ -269,20 +314,27 @@ export class PetWindow {
     }
   }
 
-  private resizeKeepingBottomCenter(scale: number): void {
+  private windowSize(): { width: number; height: number } {
+    return petWindowSize(this.settings.scale, this.chatDock)
+  }
+
+  /** Keeps the orb's bottom edge fixed when the scale changes, dock included. */
+  private resizeKeepingOrb(previousScale: number): void {
     const win = this.win
     if (!win) return
     const bounds = win.getBounds()
-    const size = petWindowSize(scale)
+    const size = this.windowSize()
+    const dockHeight = this.chatDock ? Math.round(PET_CHAT_DOCK_HEIGHT * previousScale) : 0
     const next = ensureVisible(
       {
         x: Math.round(bounds.x + (bounds.width - size.width) / 2),
-        y: bounds.y + bounds.height - size.height,
+        y: bounds.y + bounds.height - dockHeight - petWindowSize(this.settings.scale, false).height,
         ...size
       },
       workAreas()
     )
     win.setBounds(next)
+    if (this.chatDock) this.dockAnchor = { x: next.x, y: next.y }
     this.savePosition()
   }
 

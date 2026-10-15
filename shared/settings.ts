@@ -133,6 +133,11 @@ export interface VoiceSettings {
   localVoice: number
   /** Reads replies aloud; replies to voice input are always read. */
   autoSpeak: boolean
+  /**
+   * When false (the default), a microphone press does nothing while the pet is speaking.
+   * When true, voice input stops the current line and starts recording.
+   */
+  interruptSpeech: boolean
   asrProvider: ASRProviderId
   asrBaseUrl: string
   asrModel: string
@@ -205,11 +210,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     ttsBaseUrl: TTS_SERVICE_PRESETS[0].baseUrl,
     ttsModel: TTS_SERVICE_PRESETS[0].model,
     ttsVoice: TTS_SERVICE_PRESETS[0].voice,
-    rate: 1,
+    rate: 1.3,
     volume: 0.8,
     pitch: 1,
     localVoice: KOKORO_DEFAULT_SPEAKER,
     autoSpeak: false,
+    interruptSpeech: false,
     asrProvider: 'local',
     asrBaseUrl: ASR_SERVICE_PRESETS[0].baseUrl,
     asrModel: ASR_SERVICE_PRESETS[0].model,

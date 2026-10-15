@@ -7,7 +7,7 @@ export interface MockLine {
 
 /** Local placeholder lines until the AI service is connected. */
 export function greeting(name: string): MockLine {
-  return { text: `嗨，我是 ${name}！双击我打开控制面板，右键看看菜单哦～`, emotion: 'happy' }
+  return { text: `嗨，我是 ${name}！双击我打开快捷菜单，右键也能找我哦～`, emotion: 'happy' }
 }
 
 export const TAP_LINES: readonly MockLine[] = [

@@ -3,7 +3,8 @@ import {
   DOUBLE_CLICK_ACTIONS,
   PET_SCALE_MAX,
   PET_SCALE_MIN,
-  PET_SENSITIVITIES
+  PET_SENSITIVITIES,
+  PET_SKINS
 } from '../../../shared/pet'
 import {
   AI_PROFILE_ID_PATTERN,
@@ -57,7 +58,8 @@ const shapes = {
     launchAtLogin: z.boolean(),
     doNotDisturb: z.boolean(),
     sensitivity: z.enum(PET_SENSITIVITIES),
-    doubleClickAction: z.enum(DOUBLE_CLICK_ACTIONS)
+    doubleClickAction: z.enum(DOUBLE_CLICK_ACTIONS),
+    skin: z.enum(PET_SKINS)
   },
   persona: {
     name: z.string().trim().min(1).max(20),
@@ -81,6 +83,7 @@ const shapes = {
     pitch: z.number().min(0.5).max(2),
     localVoice: z.number().int().min(0).max(KOKORO_SPEAKER_MAX),
     autoSpeak: z.boolean(),
+    interruptSpeech: z.boolean(),
     asrProvider: z.enum(ASR_PROVIDERS),
     asrBaseUrl: z.string().trim().max(500),
     asrModel: z.string().trim().max(200),

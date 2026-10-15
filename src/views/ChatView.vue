@@ -6,6 +6,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import logoUrl from '../../logo.svg'
 import { CHAT_INPUT_MAX, type ChatErrorKind } from '../../shared/chat'
+import { gateVoiceInput } from '../../shared/voice-input'
 import { PET_EMOTION_LABELS } from '../../shared/pet'
 import { findProviderPreset, MOCK_PROVIDER_ID } from '../../shared/settings'
 import { useChatStore } from '../app/stores/chat'
@@ -86,11 +87,24 @@ function onKeydown(event: Event | KeyboardEvent): void {
 const voiceInput = useVoiceInput((text) => void chat.send(text, { fromVoice: true }))
 const { phase: micPhase, level: micLevel, elapsedMs: micElapsed, error: micError } = voiceInput
 const micBusy = computed(() => micPhase.value !== 'idle')
-const voiceError = computed(() => micError.value ?? voice.state.lastError)
+const micNotice = ref('')
+const voiceError = computed(() => micNotice.value || micError.value || voice.state.lastError)
 
-function toggleMic(): void {
-  if (micPhase.value === 'recording') void voiceInput.stop()
-  else if (micPhase.value === 'idle') void voiceInput.start()
+async function toggleMic(): Promise<void> {
+  if (micPhase.value === 'recording') {
+    micNotice.value = ''
+    await voiceInput.stop()
+    return
+  }
+  if (micPhase.value !== 'idle') return
+  const decision = gateVoiceInput(settings.settings.voice.interruptSpeech, voice.active)
+  if (decision === 'blocked') {
+    micNotice.value = '桌宠正在朗读。语音设置里的「打断语音」默认关闭，打开后麦克风才能打断。'
+    return
+  }
+  micNotice.value = ''
+  if (decision === 'barge-in') await voice.stop()
+  await voiceInput.start()
 }
 
 const formatSeconds = (ms: number): string => {

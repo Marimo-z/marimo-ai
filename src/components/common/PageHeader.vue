@@ -20,18 +20,21 @@ defineProps<{
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 20px;
+  gap: 20px;
+  margin-bottom: 4px;
 }
 
 .page-title {
   margin: 0;
-  font-size: 22px;
+  font-size: 26px;
   font-weight: 650;
+  letter-spacing: 0.03em;
 }
 
 .page-description {
-  margin: 6px 0 0;
+  max-width: 62ch;
+  margin: 8px 0 0;
+  line-height: 1.6;
   color: var(--mo-text-secondary);
 }
 
