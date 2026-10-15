@@ -10,6 +10,7 @@ import {
   type VoiceState,
   type VoiceStatus
 } from '../../../../shared/voice'
+import { speechPieces, splitSpeech } from '../../../../shared/speech-text'
 import { decodeWav, encodeWav } from '../../../../shared/wav'
 import { AIRequestError } from '../ai/errors'
 import { LocalEngineError } from '../local-voice/errors'
@@ -68,6 +69,13 @@ export class VoiceService {
   private synthController: AbortController | null = null
   private transcribeController: AbortController | null = null
   private watchdog: ReturnType<typeof setTimeout> | null = null
+  /** Sentences already handed to the synthesizer for the open streamed line. */
+  private queuedSentences = 0
+  private synthChain: Promise<void> = Promise.resolve()
+  private readyAudio: SynthesizedAudio[] = []
+  private playbackArmed = false
+  private playbackStarted = false
+  private streamError: string | null = null
 
   constructor(private readonly deps: VoiceServiceDeps) {}
 
@@ -117,40 +125,84 @@ export class VoiceService {
       return { ok: true, data: null }
     }
 
+    this.deps.onPet({ type: 'say', text, emotion })
+    return this.speakInSentences(id, text)
+  }
+
+  /**
+   * Starts a line whose text is still arriving. Completed sentences are synthesized
+   * immediately, and playback waits until `commitStream` knows the reply should be read.
+   */
+  beginStream(): void {
+    this.stop()
+    this.currentId = ++this.seq
+    this.queuedSentences = 0
+    this.synthChain = Promise.resolve()
+    this.readyAudio = []
+    this.playbackArmed = false
+    this.playbackStarted = false
+    this.streamError = null
     const controller = new AbortController()
     this.synthController = controller
-    this.setStatus('synthesizing', null)
-    try {
-      const audio = await this.synthesizeAudio(voice, text, controller.signal)
-      if (this.currentId !== id) return fail('已停止')
-      this.synthController = null
+  }
+
+  /** `text` is the reply so far, not a delta. */
+  noteStream(text: string): void {
+    if (this.currentId === 0 || this.playbackArmed) return
+    const voice = this.deps.getSettings().voice
+    if (voice.ttsProvider !== 'local' && voice.ttsProvider !== 'openai-compatible') return
+    const { done } = splitSpeech(text.slice(0, TTS_TEXT_MAX))
+    for (const sentence of done.slice(this.queuedSentences)) this.queueSynth(sentence)
+    this.queuedSentences = done.length
+  }
+
+  /**
+   * The reply is final. When `speak` is false, audio synthesized ahead is dropped.
+   * Resolves once every sentence has been handed to the pet (playback may still be going).
+   */
+  async commitStream(text: string, speak: boolean): Promise<Result<null>> {
+    const id = this.currentId
+    if (!speak || id === 0) {
+      this.dropPendingAudio()
+      return { ok: true, data: null }
+    }
+    const voice = this.deps.getSettings().voice
+    if (voice.ttsProvider === 'system') {
+      this.dropPendingAudio()
+      const next = ++this.seq
+      this.currentId = next
       this.deps.onPet({
-        type: 'say',
+        type: 'speak-more',
         text,
-        emotion,
-        voice: { engine: 'audio', id, ...audio, volume: voice.volume }
+        voice: {
+          engine: 'system',
+          id: next,
+          voiceName: voice.systemVoice,
+          rate: voice.rate,
+          pitch: voice.pitch,
+          volume: voice.volume
+        }
       })
+      this.deps.onPet({ type: 'speech-end', id: next })
       this.setStatus('speaking', null)
       return { ok: true, data: null }
-    } catch (error) {
-      // A newer line took over: it owns the pet and the state now.
-      if (this.currentId !== id && this.currentId !== 0) return fail('已停止')
-      if (this.synthController === controller) this.synthController = null
-      const message = knownMessage(error) ?? '语音合成失败'
-      if (!knownMessage(error)) console.error('[voice] synthesis failed', error)
-      const stopped = this.currentId === 0
-      this.currentId = 0
-      // The reply still has to reach the pet, just without sound.
-      this.deps.onPet({ type: 'say', text, emotion })
-      if (stopped) return fail('已停止')
-      this.setStatus('idle', `语音合成失败：${message}`)
-      return fail(message)
     }
+    if (voice.ttsProvider === 'mock') {
+      this.dropPendingAudio()
+      return { ok: true, data: null }
+    }
+    return this.speakInSentences(id, text, this.queuedSentences)
   }
 
   /** Stops synthesis and playback. */
   stop(): void {
     this.currentId = 0
+    this.playbackArmed = false
+    this.playbackStarted = false
+    this.streamError = null
+    this.readyAudio = []
+    this.queuedSentences = 0
+    this.synthChain = Promise.resolve()
     this.synthController?.abort()
     this.synthController = null
     if (this.status === 'speaking') this.deps.onPet({ type: 'stop-speech' })
@@ -213,6 +265,83 @@ export class VoiceService {
     this.stop()
     this.transcribeController?.abort()
     if (this.watchdog) clearTimeout(this.watchdog)
+  }
+
+  private async speakInSentences(
+    id: number,
+    text: string,
+    alreadyQueued = 0
+  ): Promise<Result<null>> {
+    if (!this.synthController) this.synthController = new AbortController()
+    this.playbackArmed = true
+    const pieces = speechPieces(text.slice(0, TTS_TEXT_MAX))
+    for (const sentence of pieces.slice(alreadyQueued)) this.queueSynth(sentence)
+    this.queuedSentences = pieces.length
+    this.flushReady(id)
+    await this.synthChain
+    if (this.currentId !== id) return fail('已停止')
+    if (!this.playbackStarted) {
+      const message = this.streamError ?? '语音合成失败'
+      this.streamError = null
+      this.synthController = null
+      this.currentId = 0
+      this.setStatus('idle', `语音合成失败：${message}`)
+      return fail(message)
+    }
+    this.synthController = null
+    if (this.streamError) this.setStatus('speaking', `语音合成失败：${this.streamError}`)
+    this.streamError = null
+    this.deps.onPet({ type: 'speech-end', id })
+    return { ok: true, data: null }
+  }
+
+  private queueSynth(sentence: string): void {
+    const id = this.currentId
+    const controller = this.synthController
+    if (!controller || id === 0) return
+    if (this.status !== 'speaking') this.setStatus('synthesizing', null)
+    this.synthChain = this.synthChain.then(async () => {
+      if (this.currentId !== id || this.streamError || controller.signal.aborted) return
+      const voice = this.deps.getSettings().voice
+      const audio = await this.synthesizeAudio(voice, sentence, controller.signal)
+      if (this.currentId !== id) return
+      this.readyAudio.push(audio)
+      this.flushReady(id)
+    }).catch((error: unknown) => {
+      if (this.currentId !== id || controller.signal.aborted) return
+      const message = knownMessage(error) ?? '语音合成失败'
+      if (!knownMessage(error)) console.error('[voice] synthesis failed', error)
+      this.streamError = message
+    })
+  }
+
+  private flushReady(id: number): void {
+    if (!this.playbackArmed || this.currentId !== id) return
+    const volume = this.deps.getSettings().voice.volume
+    while (this.readyAudio.length > 0) {
+      const audio = this.readyAudio.shift()
+      if (!audio) break
+      this.deps.onPet({
+        type: 'speak-more',
+        text: '',
+        voice: { engine: 'audio', id, ...audio, volume }
+      })
+      this.playbackStarted = true
+      this.setStatus('speaking', null)
+    }
+  }
+
+  /** Forgets audio prepared for a reply that should not be read aloud. */
+  private dropPendingAudio(): void {
+    this.playbackArmed = false
+    this.readyAudio = []
+    this.queuedSentences = 0
+    this.synthChain = Promise.resolve()
+    this.synthController?.abort()
+    this.synthController = null
+    if (this.status === 'speaking') return
+    this.currentId = 0
+    if (this.status !== 'idle') this.setStatus('idle', null)
   }
 
   private async synthesizeAudio(

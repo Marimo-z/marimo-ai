@@ -77,10 +77,12 @@ describe('VoiceService cloud voice', () => {
 
     expect(await service.speak('你好')).toEqual({ ok: true, data: null })
     expect(states.map((s) => s.status)).toEqual(['synthesizing', 'speaking'])
-    expect(pet[0]).toMatchObject({
-      type: 'say',
+    expect(pet[0]).toMatchObject({ type: 'say', text: '你好' })
+    expect(pet[1]).toMatchObject({
+      type: 'speak-more',
       voice: { engine: 'audio', data: new Uint8Array([9, 9]), mime: 'audio/mpeg', volume: 0.5 }
     })
+    expect(pet[2]).toMatchObject({ type: 'speech-end' })
   })
 
   it('still shows the reply when synthesis fails, and reports why', async () => {
@@ -111,15 +113,18 @@ describe('VoiceService cloud voice', () => {
   })
 
   it('a newer line replaces one that is still being synthesized', async () => {
-    let calls = 0
     const fetchImpl = vi.fn(
       (_url: string, init: RequestInit) =>
         new Promise<Response>((resolve, reject) => {
-          if (++calls === 1) {
-            init.signal?.addEventListener('abort', () =>
-              reject(new DOMException('x', 'AbortError'))
-            )
-          } else resolve(audioResponse())
+          if (init.signal?.aborted) {
+            reject(new DOMException('x', 'AbortError'))
+            return
+          }
+          const timer = setTimeout(() => resolve(audioResponse()), 20)
+          init.signal?.addEventListener('abort', () => {
+            clearTimeout(timer)
+            reject(new DOMException('x', 'AbortError'))
+          })
         })
     )
     const { service, pet } = setup({ ttsProvider: 'openai-compatible' }, fetchImpl as typeof fetch)
@@ -127,9 +132,36 @@ describe('VoiceService cloud voice', () => {
     const first = service.speak('第一句')
     const second = service.speak('第二句')
     await Promise.all([first, second])
-    expect(pet).toHaveLength(1)
-    expect(pet[0]).toMatchObject({ type: 'say', text: '第二句' })
+    const says = pet.filter((command) => command?.type === 'say')
+    expect(says.at(-1)).toMatchObject({ type: 'say', text: '第二句' })
     expect(service.state().status).toBe('speaking')
+  })
+
+  it('plays the first sentence while the next one is still being synthesized', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let calls = 0
+    const fetchImpl = vi.fn((_url: string, _init: RequestInit) => {
+      calls++
+      if (calls === 1) return gate.then(() => audioResponse())
+      return Promise.resolve(audioResponse())
+    })
+    const { service, pet } = setup(
+      { ttsProvider: 'openai-compatible' },
+      fetchImpl as typeof fetch
+    )
+
+    const pending = service.speak('第一句。第二句。')
+    await vi.waitUntil(() => calls === 1)
+    expect(pet.some((command) => command?.type === 'speak-more')).toBe(false)
+    release()
+    await vi.waitUntil(() => calls === 2)
+    expect(pet.some((command) => command?.type === 'speak-more')).toBe(true)
+    await pending
+    expect(pet.filter((command) => command?.type === 'speak-more')).toHaveLength(2)
+    expect(pet.at(-1)).toMatchObject({ type: 'speech-end' })
   })
 })
 
@@ -154,9 +186,46 @@ describe('VoiceService local voice', () => {
     )
     expect(await service.speak('你好')).toEqual({ ok: true, data: null })
     expect(synthesize.mock.calls[0]?.slice(0, 3)).toEqual(['你好', 7, 1.2])
-    const voice = (pet[0] as { voice: { engine: string; mime: string; data: Uint8Array } }).voice
+    const clip = pet.find((command) => command?.type === 'speak-more')
+    const voice = (clip as { voice: { engine: string; mime: string; data: Uint8Array } }).voice
     expect(voice).toMatchObject({ engine: 'audio', mime: 'audio/wav' })
     expect(decodeWav(voice.data)).toMatchObject({ sampleRate: 24000 })
+  })
+
+  it('synthesizes a finished sentence before the reply is allowed to play', async () => {
+    const synthesize = vi.fn(fakeLocal().synthesize)
+    const { service, pet } = setup({ ttsProvider: 'local' }, undefined, false, fakeLocal({ synthesize }))
+
+    service.beginStream()
+    service.noteStream('第一句。第二句还没')
+    await vi.waitUntil(() => synthesize.mock.calls.length === 1)
+    expect(synthesize.mock.calls[0]?.[0]).toBe('第一句。')
+    expect(pet.some((command) => command?.type === 'speak-more')).toBe(false)
+
+    await service.commitStream('第一句。第二句还没说完。', true)
+    expect(synthesize.mock.calls.map((call) => call[0])).toEqual(['第一句。', '第二句还没说完。'])
+    expect(pet.filter((command) => command?.type === 'speak-more')).toHaveLength(2)
+  })
+
+  it('drops audio prepared ahead when the reply should stay silent', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const synthesize = vi.fn(async () => {
+      await gate
+      return { samples: new Float32Array([0.1]), sampleRate: 24000 }
+    })
+    const { service, pet } = setup({ ttsProvider: 'local' }, undefined, false, fakeLocal({ synthesize }))
+
+    service.beginStream()
+    service.noteStream('不要读出来。')
+    await vi.waitUntil(() => synthesize.mock.calls.length === 1)
+    const pending = service.commitStream('不要读出来。', false)
+    release()
+    await pending
+    expect(pet.some((command) => command?.type === 'speak-more')).toBe(false)
+    expect(service.state().status).toBe('idle')
   })
 
   it('falls back to a silent bubble when the model is missing', async () => {

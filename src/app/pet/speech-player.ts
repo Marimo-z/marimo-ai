@@ -24,6 +24,10 @@ function loadVoices(): Promise<SpeechSynthesisVoice[]> {
 export class SpeechPlayer {
   private finish: ((outcome: SpeechOutcome, message?: string) => void) | null = null
   private cleanup: (() => void) | null = null
+  private activeId: number | null = null
+  private pendingAudio: Extract<PetVoice, { engine: 'audio' }>[] = []
+  private noMore = false
+  private waiting = false
 
   get playing(): boolean {
     return this.finish !== null
@@ -32,12 +36,19 @@ export class SpeechPlayer {
   async play(voice: PetVoice, text: string, onEnd: SpeechEndListener): Promise<void> {
     this.stop()
     let settled = false
+    this.activeId = voice.id
+    this.noMore = false
+    this.waiting = false
+    this.pendingAudio = []
     this.finish = (outcome, message) => {
       if (settled) return
       settled = true
       this.finish = null
       this.cleanup?.()
       this.cleanup = null
+      this.pendingAudio = []
+      this.waiting = false
+      this.activeId = null
       onEnd(outcome, message)
     }
     const finish = this.finish
@@ -49,7 +60,32 @@ export class SpeechPlayer {
     }
   }
 
+  /**
+   * Adds another clip of the current line. A different id replaces the line.
+   * The end listener from the first clip is kept.
+   */
+  enqueue(voice: PetVoice, text: string, onEnd: SpeechEndListener): void {
+    if (this.finish && this.activeId === voice.id && voice.engine === 'audio') {
+      if (this.waiting) {
+        this.waiting = false
+        void this.playAudio(voice, this.finish)
+      } else this.pendingAudio.push(voice)
+      return
+    }
+    void this.play(voice, text, onEnd)
+  }
+
+  /** The line has no further clips. Ends playback once the queue is empty. */
+  complete(id: number): void {
+    if (id !== this.activeId || !this.finish) return
+    this.noMore = true
+    if (this.waiting && this.pendingAudio.length === 0) this.finish('ended')
+  }
+
   stop(): void {
+    this.pendingAudio = []
+    this.noMore = false
+    this.waiting = false
     this.finish?.('ended')
   }
 
@@ -90,7 +126,7 @@ export class SpeechPlayer {
     const url = URL.createObjectURL(new Blob([new Uint8Array(voice.data)], { type: voice.mime }))
     const audio = new Audio(url)
     audio.volume = voice.volume
-    audio.onended = () => finish('ended')
+    audio.onended = () => this.advance(finish)
     audio.onerror = () => finish('error', '音频无法播放')
     this.cleanup = () => {
       audio.onended = null
@@ -99,5 +135,18 @@ export class SpeechPlayer {
       URL.revokeObjectURL(url)
     }
     await audio.play()
+  }
+
+  private advance(finish: SpeechEndListener): void {
+    if (this.finish !== finish) return
+    this.cleanup?.()
+    this.cleanup = null
+    const next = this.pendingAudio.shift()
+    if (next) {
+      void this.playAudio(next, finish)
+      return
+    }
+    if (this.noMore) finish('ended')
+    else this.waiting = true
   }
 }

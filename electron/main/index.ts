@@ -79,7 +79,13 @@ if (!app.requestSingleInstanceLock()) {
         pet.notifyChat(state)
       },
       onPet: (command) => pet.sendCommand(command),
-      presentReply: (reply, readAloud) => void voice.present(reply.text, reply.emotion, readAloud)
+      presentReply: (reply, readAloud) => void voice.present(reply.text, reply.emotion, readAloud),
+      speech: {
+        begin: () => voice.beginStream(),
+        note: (text) => voice.noteStream(text),
+        commit: (text, speak) => voice.commitStream(text, speak),
+        cancel: () => voice.stop()
+      }
     })
     const games = new GameService(new GameRecordStore(join(userData, 'game-records.json')), {
       getSettings: () => settings.get(),

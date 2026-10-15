@@ -15,6 +15,7 @@ import {
   type AIProfile,
   type AppSettings
 } from '../../../shared/settings'
+import { readStreamingReplyText } from '../../../shared/speech-text'
 import { isLocalUrl } from './ai/connection-test'
 import { AIRequestError } from './ai/errors'
 import { buildMessages, PROACTIVE_INSTRUCTION } from './ai/prompt'
@@ -33,6 +34,16 @@ export interface ChatServiceDeps {
   onPet(command: PetCommand): void
   /** Shows a reply on the pet, optionally read aloud; defaults to a plain bubble. */
   presentReply?(reply: AIReply, readAloud: boolean): void
+  /**
+   * Sentence-sized synthesis while a streamed reply is still arriving.
+   * Playback starts only after `commit` is told to speak.
+   */
+  speech?: {
+    begin(): void
+    note(text: string): void
+    commit(text: string, speak: boolean): Promise<unknown>
+    cancel(): void
+  }
   now?(): number
 }
 
@@ -129,10 +140,13 @@ export class ChatService {
     this.emit()
     if (!proactive) this.deps.onPet({ type: 'emotion', emotion: 'thinking', durationMs: 0 })
 
+    const audible = this.willSpeak(fromVoice)
+    let streamed = false
     try {
       const persona = this.deps.getSettings().persona
-      const raw = await provider.chat(buildMessages(persona, this.messages, extraInstruction), {
-        signal: controller.signal
+      const messages = buildMessages(persona, this.messages, extraInstruction)
+      const raw = await this.collectReply(provider, messages, controller.signal, audible, () => {
+        streamed = true
       })
       const reply = parseAIReply(raw)
       if (!reply) throw new AIRequestError('bad-response', '模型没有返回可显示的内容')
@@ -146,11 +160,20 @@ export class ChatService {
         ...(proactive ? { proactive: true } : {})
       }
       this.append(message)
-      const readAloud = reply.speech && (fromVoice || this.deps.getSettings().voice.autoSpeak)
-      if (this.deps.presentReply) this.deps.presentReply(reply, readAloud)
+      const readAloud = reply.speech && audible
+      if (streamed) {
+        this.deps.onPet({
+          type: 'caption',
+          text: reply.text,
+          emotion: reply.emotion,
+          complete: true
+        })
+        if (audible) await this.deps.speech?.commit(reply.text, readAloud)
+      } else if (this.deps.presentReply) this.deps.presentReply(reply, readAloud)
       else this.deps.onPet({ type: 'say', text: reply.text, emotion: reply.emotion })
       return { ok: true, reply: message }
     } catch (error) {
+      if (streamed) this.deps.speech?.cancel()
       const failure =
         error instanceof AIRequestError
           ? this.fail(error.kind, error.message)
@@ -166,6 +189,40 @@ export class ChatService {
       this.controller = null
       this.lastActivityAt = this.now()
       this.emit()
+    }
+  }
+
+  private willSpeak(fromVoice: boolean): boolean {
+    const settings = this.deps.getSettings()
+    if (settings.pet.doNotDisturb || settings.voice.ttsProvider === 'mock') return false
+    return fromVoice || settings.voice.autoSpeak
+  }
+
+  private async collectReply(
+    provider: AIProvider,
+    messages: ReturnType<typeof buildMessages>,
+    signal: AbortSignal,
+    audible: boolean,
+    markStreamed: () => void
+  ): Promise<string> {
+    if (!provider.chatStream) return provider.chat(messages, { signal })
+    markStreamed()
+    if (audible) this.deps.speech?.begin()
+    let raw = ''
+    let shown = ''
+    try {
+      for await (const delta of provider.chatStream(messages, { signal })) {
+        raw += delta
+        const partial = readStreamingReplyText(raw)
+        if (!partial || partial.value === shown) continue
+        shown = partial.value
+        this.deps.onPet({ type: 'caption', text: shown })
+        if (audible) this.deps.speech?.note(shown)
+      }
+      return raw
+    } catch (error) {
+      if (audible) this.deps.speech?.cancel()
+      throw error
     }
   }
 

@@ -187,6 +187,51 @@ describe('ChatService', () => {
     }
   })
 
+  it('starts speaking a finished sentence before the rest of the reply arrives', async () => {
+    const notes: string[] = []
+    let release: () => void = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const settings = structuredClone(DEFAULT_SETTINGS)
+    settings.voice.autoSpeak = true
+    settings.voice.ttsProvider = 'local'
+    const service = new ChatService({
+      getSettings: () => settings,
+      getKey: () => 'sk',
+      createProvider: () => ({
+        testConnection: vi.fn(),
+        chat: async () => {
+          throw new Error('stream should be used')
+        },
+        async *chatStream() {
+          yield '{"text":"第一句。'
+          notes.push('yielded-first')
+          await gate
+          yield '第二句。","emotion":"happy","speech":true}'
+        }
+      }),
+      history: memoryHistory(),
+      onState: () => {},
+      onPet: () => {},
+      speech: {
+        begin: () => notes.push('begin'),
+        note: (text) => notes.push(`note:${text}`),
+        commit: async (_text, speak) => {
+          notes.push(`commit:${speak}`)
+        },
+        cancel: () => notes.push('cancel')
+      }
+    })
+
+    const pending = service.send('你好')
+    await vi.waitUntil(() => notes.includes('note:第一句。'))
+    expect(notes).toEqual(['begin', 'note:第一句。', 'yielded-first'])
+    release()
+    await pending
+    expect(notes.at(-1)).toBe('commit:true')
+  })
+
   it('records proactive lines without a user message', async () => {
     const { service, chat } = setup()
     const result = await service.speakProactively()

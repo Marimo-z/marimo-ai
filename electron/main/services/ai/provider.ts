@@ -18,6 +18,11 @@ export interface AIProvider {
   testConnection(): Promise<ConnectionTestResult>
   /** Returns the raw text content of the reply; throws AIRequestError on failure. */
   chat(messages: ProviderMessage[], options: ChatOptions): Promise<string>
+  /**
+   * Yields the reply text as it arrives. When omitted, ChatService uses `chat`.
+   * The concatenated chunks are the same string `chat` would return.
+   */
+  chatStream?(messages: ProviderMessage[], options: ChatOptions): AsyncIterable<string>
 }
 
 export function createProvider(

@@ -85,11 +85,11 @@ function stopVoice(): void {
 }
 
 function playVoice(voice: PetVoice, text: string): void {
-  store.voicePlaying = true
-  void player.play(voice, text, (outcome, message) => {
+  player.enqueue(voice, text, (outcome, message) => {
     store.voicePlaying = false
     petBridge.reportSpeech(voice.id, outcome, message)
   })
+  store.voicePlaying = true
 }
 
 let lastLine: MockLine | undefined
@@ -277,6 +277,18 @@ function handleCommand(command: PetCommand): void {
     } else {
       speak(pickLine(RANDOM_LINES, lastLine))
     }
+  } else if (command?.type === 'caption') {
+    if (typeof command.text === 'string' && command.text.trim()) {
+      store.caption(
+        command.text,
+        isPetEmotion(command.emotion) ? command.emotion : undefined,
+        command.complete === true
+      )
+    }
+  } else if (command?.type === 'speak-more') {
+    playVoice(command.voice, command.text)
+  } else if (command?.type === 'speech-end') {
+    player.complete(command.id)
   } else if (command?.type === 'stop-speech') {
     stopVoice()
   } else if (command?.type === 'play') {
@@ -335,7 +347,8 @@ onBeforeUnmount(() => {
           :message-id="dialogue.id"
           :text="dialogue.text"
           :base-duration-ms="settings.bubbleDurationMs"
-          :hold="store.voicePlaying"
+          :complete="dialogue.complete"
+          :hold="speaking"
           @typing="(active) => (store.isSpeaking = active)"
           @close="closeBubble"
         />

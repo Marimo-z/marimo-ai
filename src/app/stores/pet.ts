@@ -7,6 +7,8 @@ import { resolvePetAppearance } from '../../utils/pet-appearance'
 export interface Dialogue {
   id: number
   text: string
+  /** False while a streamed reply can still grow. */
+  complete: boolean
 }
 
 const DEFAULT_EMOTION_MS = 2500
@@ -62,8 +64,17 @@ export const usePetStore = defineStore('pet', () => {
   }
 
   function say(text: string, withEmotion?: PetEmotion): void {
-    dialogue.value = { id: ++dialogueSeq, text }
+    dialogue.value = { id: ++dialogueSeq, text, complete: true }
     if (withEmotion) setEmotion(withEmotion, Math.max(DEFAULT_EMOTION_MS, text.length * 80))
+  }
+
+  /** Updates the open bubble, or opens one, without starting a new message. */
+  function caption(text: string, withEmotion?: PetEmotion, complete = false): void {
+    if (dialogue.value) dialogue.value = { ...dialogue.value, text, complete }
+    else dialogue.value = { id: ++dialogueSeq, text, complete }
+    if (withEmotion) {
+      setEmotion(withEmotion, complete ? Math.max(DEFAULT_EMOTION_MS, text.length * 80) : 0)
+    }
   }
 
   function dismissDialogue(): void {
@@ -85,6 +96,7 @@ export const usePetStore = defineStore('pet', () => {
     applySettings,
     setEmotion,
     say,
+    caption,
     dismissDialogue
   }
 })

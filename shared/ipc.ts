@@ -72,6 +72,15 @@ export interface CursorPoint {
 export type PetCommand =
   /** With `voice`, the bubble stays up until playback ends. */
   | { type: 'say'; text?: string; emotion?: PetEmotion; voice?: PetVoice }
+  /**
+   * Grows the current bubble without restarting playback.
+   * `complete` lets the typewriter finish; until then the text may still grow.
+   */
+  | { type: 'caption'; text: string; emotion?: PetEmotion; complete?: boolean }
+  /** Another clip of the line already on screen. `text` is what a system voice should read. */
+  | { type: 'speak-more'; voice: PetVoice; text: string }
+  /** No further clips will arrive for this playback id. */
+  | { type: 'speech-end'; id: number }
   /** `durationMs` 0 keeps the emotion until the next command. */
   | { type: 'emotion'; emotion: PetEmotion; durationMs?: number }
   | { type: 'stop-speech' }

@@ -123,7 +123,7 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 
 数据流：聊天页 → `chat:send`（只接受面板窗口，文本 1–1000 字）→ `ChatService` → Provider → 解析回复 → 通过 `chat:changed` 推送新状态给面板，并通过桌宠命令显示气泡和表情。
 
-- **Provider**：`AIProvider { testConnection(); chat(messages, { signal }) }`，返回模型的原始文本。`createProvider` 对 `mock` 返回离线实现，其余服务商都走 OpenAI 兼容的 `POST {baseUrl}/chat/completions`（`stream: false`）。URL 规则与连接测试相同（非本机地址必须 HTTPS）；本机地址（如 Ollama）可以不填密钥。
+- **Provider**：`AIProvider { testConnection(); chat(messages, { signal }) }`，返回模型的原始文本。有 `chatStream` 时按块返回同一段文本。`createProvider` 对 `mock` 返回离线实现，其余服务商都走 OpenAI 兼容的 `POST {baseUrl}/chat/completions`（`stream: true`，若对方仍返回整段 JSON 也能收下）。URL 规则与连接测试相同（非本机地址必须 HTTPS）；本机地址（如 Ollama）可以不填密钥。
 - **超时与取消**：请求使用 `AbortSignal.any([用户取消, AbortSignal.timeout(timeoutMs)])`，并区分"已取消"和"超时"。同一时间只允许一个请求，重复发送返回 `busy`。
 - **提示词**：系统提示词包含人设字段和回复长度要求，并要求只输出 `{"text","emotion","speech"}` 格式的 JSON，`emotion` 只能取 6 个情绪之一；同时告知模型它只能聊天，不能执行命令或操作文件。历史中的助手消息以同样的 JSON 形式回放，帮助模型保持格式。
 - **上下文**：从最近的消息往前取，最多 20 条、约 6000 字；如果第一条是助手消息就丢弃，保证以用户消息开头。
@@ -145,6 +145,7 @@ pet.html / settings.html     两个窗口的 HTML（含 CSP）
 调度（`VoiceService`）：
 
 - 同一时间只有一句话。每句话有递增的 `id`，新的一句或"停止"都会打断上一句（中止合成请求，或通知桌宠停止播放）。桌宠播放结束或出错时用 `pet:speech-report` 回报 `id`，过期的回报被忽略；如果一直没有回报（例如窗口重载），5 分钟后自动复位。
+- 本地和在线合成按句切开：第一句合成完就播放，下一句在播放时继续合成。聊天若走 `chatStream`，会在 JSON 的 `text` 里每凑满一句就开始合成，但要等整段通过校验且 `speech` 为真才出声。气泡文字随流式内容变长，不把模型输出当 HTML。
 - 在线合成失败时，回复仍以普通气泡显示，并把错误写入 `VoiceState.lastError`，在聊天页和语音设置页显示。
 - 朗读条件：`reply.speech && (语音输入 || autoSpeak)`，且未开启免打扰；开启免打扰时会停止正在进行的朗读。语音设置里的「打断语音」默认关闭：关闭时麦克风不会在朗读过程中把这句话停掉，打开后语音输入才会打断当前朗读。
 - 桌宠在朗读期间保持气泡（`PetBubble` 的 `hold`），进入 talking 状态；朗读期间不会被单击时的本地台词覆盖，保证气泡与正在朗读的内容一致。

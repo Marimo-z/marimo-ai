@@ -11,8 +11,10 @@ const props = withDefaults(
     typewriter?: boolean
     /** Keeps the bubble up (e.g. while the line is being read aloud). */
     hold?: boolean
+    /** False while more text may still arrive. */
+    complete?: boolean
   }>(),
-  { typewriter: true, hold: false }
+  { typewriter: true, hold: false, complete: true }
 )
 
 const emit = defineEmits<{
@@ -52,21 +54,34 @@ function finishTyping(): void {
   scheduleHide()
 }
 
+let typed = 0
+
+function pump(): void {
+  if (typeTimer) return
+  emit('typing', true)
+  typingDone = false
+  typeTimer = setInterval(() => {
+    const chars = Array.from(props.text)
+    if (typed < chars.length) {
+      typed++
+      visibleText.value = chars.slice(0, typed).join('')
+    }
+    if (typed >= chars.length && props.complete) finishTyping()
+    else if (typed >= chars.length && typeTimer) {
+      clearInterval(typeTimer)
+      typeTimer = null
+    }
+  }, TYPEWRITER_MS_PER_CHAR)
+}
+
 function start(): void {
   stopTimers()
   expanded.value = false
   typingDone = false
-  if (!props.typewriter) return finishTyping()
-
-  const chars = Array.from(props.text)
-  let count = 0
+  typed = 0
   visibleText.value = ''
-  emit('typing', true)
-  typeTimer = setInterval(() => {
-    count++
-    visibleText.value = chars.slice(0, count).join('')
-    if (count >= chars.length) finishTyping()
-  }, TYPEWRITER_MS_PER_CHAR)
+  if (!props.typewriter) return finishTyping()
+  pump()
 }
 
 function onClick(): void {
@@ -82,6 +97,12 @@ function onHover(active: boolean): void {
 
 watch(() => props.messageId, start, { immediate: true })
 watch(() => props.hold, scheduleHide)
+watch(
+  () => [props.text, props.complete] as const,
+  () => {
+    if (props.typewriter && !typingDone) pump()
+  }
+)
 
 watch(visibleText, async () => {
   if (typingDone) return
